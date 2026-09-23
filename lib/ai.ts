@@ -34,7 +34,7 @@ const SPAM_KEYWORDS = [
   "verify your account",
 ];
 
-function heuristicSpamScore(email: ParsedEmail): number {
+export function heuristicSpamScore(email: ParsedEmail): number {
   let score = 0;
   const haystack = `${email.subject} ${email.snippet}`.toLowerCase();
   if (email.subject === email.subject.toUpperCase() && email.subject.length > 6) score += 1;

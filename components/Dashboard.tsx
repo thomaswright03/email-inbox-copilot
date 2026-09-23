@@ -53,7 +53,7 @@ function SkeletonLines() {
 
 function SkeletonCards() {
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {[0, 1, 2, 3].map((i) => (
         <div key={i} className="animate-pulse rounded-2xl border border-border bg-surface p-4">
           <div className="flex items-center gap-3">
@@ -77,6 +77,7 @@ export default function Dashboard({ userName }: { userName: string }) {
   const [loadingSpam, setLoadingSpam] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
+  const [confirmingDelete, setConfirmingDelete] = useState<{ id: string; name: string; subject: string } | null>(null);
 
   useEffect(() => {
     fetch("/api/emails/today")
@@ -195,7 +196,7 @@ export default function Dashboard({ userName }: { userName: string }) {
             {loadingSpam ? (
               <SkeletonCards />
             ) : spamCards && spamCards.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {spamCards.map((card) => {
                   const { name, email } = parseSender(card.from);
                   const isRemoving = removingIds.has(card.id);
@@ -229,7 +230,7 @@ export default function Dashboard({ userName }: { userName: string }) {
 
                       <div className="mt-3.5 flex gap-2">
                         <button
-                          onClick={() => handleAction("delete", card.id)}
+                          onClick={() => setConfirmingDelete({ id: card.id, name, subject: card.subject })}
                           className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-danger-soft px-2.5 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger hover:text-danger-foreground"
                         >
                           <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
@@ -276,6 +277,46 @@ export default function Dashboard({ userName }: { userName: string }) {
           Privacy Policy
         </Link>
       </footer>
+
+      {confirmingDelete && (
+        <div
+          className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => setConfirmingDelete(null)}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="confirm-delete-heading"
+            className="w-full max-w-sm rounded-2xl border border-border bg-surface p-5 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="confirm-delete-heading" className="text-sm font-semibold">
+              Delete this email?
+            </h2>
+            <p className="mt-2 text-sm text-muted">
+              From <span className="font-medium text-foreground">{confirmingDelete.name}</span>:{" "}
+              &ldquo;{confirmingDelete.subject}&rdquo;. This moves it to Gmail Trash.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmingDelete(null)}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-hover"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  handleAction("delete", confirmingDelete.id);
+                  setConfirmingDelete(null);
+                }}
+                className="rounded-lg bg-danger px-3 py-1.5 text-sm font-medium text-danger-foreground transition-colors hover:opacity-90"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

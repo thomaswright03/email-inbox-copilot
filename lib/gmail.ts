@@ -17,8 +17,14 @@ function getGmailClient(accessToken: string): gmail_v1.Gmail {
   return google.gmail({ version: "v1", auth });
 }
 
-function getHeader(headers: gmail_v1.Schema$MessagePartHeader[] | undefined, name: string): string {
+export function getHeader(headers: gmail_v1.Schema$MessagePartHeader[] | undefined, name: string): string {
   return headers?.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
+}
+
+// Only messages currently sitting in the inbox (not already filtered to Spam)
+// are eligible for spam-flashcard classification.
+export function isInInbox(labelIds: string[]): boolean {
+  return labelIds.includes("INBOX") && !labelIds.includes("SPAM");
 }
 
 const METADATA_HEADERS = ["From", "Subject", "Date", "List-Unsubscribe"];
@@ -60,7 +66,7 @@ export async function fetchTodaysMessages(accessToken: string): Promise<ParsedEm
       snippet: msg.snippet ?? "",
       date: getHeader(headers, "Date"),
       listUnsubscribe: getHeader(headers, "List-Unsubscribe") || null,
-      isInInbox: labelIds.includes("INBOX") && !labelIds.includes("SPAM"),
+      isInInbox: isInInbox(labelIds),
     };
   });
 }

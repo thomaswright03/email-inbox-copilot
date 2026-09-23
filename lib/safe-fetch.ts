@@ -42,7 +42,7 @@ for (const [address, prefix] of IPV6_BLOCKED_CIDRS) {
 const MAX_REDIRECTS = 5;
 const FETCH_TIMEOUT_MS = 10_000;
 
-function isBlockedAddress(address: string, family: number): boolean {
+export function isBlockedAddress(address: string, family: number): boolean {
   if (blockedRanges.check(address, family === 6 ? "ipv6" : "ipv4")) return true;
   // An IPv4 address embedded in an IPv6 address (e.g. ::ffff:127.0.0.1) would
   // otherwise slip past the IPv6 ranges above, so unwrap and check it too.
@@ -53,7 +53,7 @@ function isBlockedAddress(address: string, family: number): boolean {
   return false;
 }
 
-async function toSafeUrl(candidate: string): Promise<URL | null> {
+export async function toSafeUrl(candidate: string): Promise<URL | null> {
   let url: URL;
   try {
     url = new URL(candidate);
