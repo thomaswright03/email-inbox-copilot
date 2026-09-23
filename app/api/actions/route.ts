@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { trashMessage, archiveMessage, getListUnsubscribeHeader } from "@/lib/gmail";
+import { safeFetchUnsubscribe, UnsafeUrlError } from "@/lib/safe-fetch";
 
 type ActionBody = {
   action: "delete" | "unsubscribe" | "ignore";
@@ -47,8 +48,11 @@ export async function POST(req: Request) {
     }
 
     try {
-      await fetch(url, { method: "GET", redirect: "follow" });
-    } catch {
+      await safeFetchUnsubscribe(url);
+    } catch (err) {
+      if (err instanceof UnsafeUrlError) {
+        return NextResponse.json({ ok: false, error: "This unsubscribe link isn't allowed" }, { status: 400 });
+      }
       return NextResponse.json({ ok: false, error: "Unsubscribe request failed" }, { status: 502 });
     }
 
