@@ -4,7 +4,7 @@ A daily email summary + spam flashcards front end, built on Gmail (works from an
 
 ## What it does
 
-- **Today's Summary tab** — pulls every message from the last 24 hours and asks Claude for a short, skimmable summary of what actually matters.
+- **Today's Summary tab** — pulls every message from the last 24 hours and asks Gemini for a short, skimmable summary of what actually matters.
 - **Spam Flashcards tab** — flags inbox messages (not already in Junk/Spam) that look promotional or spammy, shown as cards with sender + subject. Each card has **Delete**, **Unsubscribe** (uses the message's `List-Unsubscribe` header when present), and **Ignore**.
 
 ## Setup
@@ -29,7 +29,7 @@ Fill in:
 
 - `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` — from step 1.
 - `AUTH_SECRET` — generate with `npx auth secret`.
-- `ANTHROPIC_API_KEY` — from [console.anthropic.com](https://console.anthropic.com).
+- `GEMINI_API_KEY` — free-tier key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
 
 ### 3. Run it
 
@@ -43,7 +43,8 @@ Open [http://localhost:3000](http://localhost:3000) and sign in with Google.
 ## Notes / current scope
 
 - Only Gmail is wired up right now. Outlook/generic IMAP would need a second connector in `lib/` behind the same interface.
-- Spam detection is a heuristic pre-filter (keywords, all-caps subjects, presence of `List-Unsubscribe`) followed by a Claude pass to cut false positives. It only looks at messages sitting in the inbox, not ones already in Junk.
+- Spam detection is a heuristic pre-filter (keywords, all-caps subjects, presence of `List-Unsubscribe`) followed by a Gemini pass to cut false positives. It only looks at messages sitting in the inbox, not ones already in Junk.
+- Uses `gemini-3.5-flash-lite`, which is free (500 requests/day) as of writing — check [Google AI Studio pricing](https://ai.google.dev/pricing) if that changes.
 - "Unsubscribe" only works when the sender includes a `List-Unsubscribe` header with an HTTP(S) link (most legitimate marketing senders do; mailto-only or link-less senders will show a disabled button).
 - Access tokens aren't refreshed yet — after ~1 hour you'll need to sign in again. Add a refresh-token flow in `auth.ts` if you want long-lived sessions.
 - No packaging step yet (Phase 4 from the original spec — Electron/Tauri) since this runs fine as a plain web app in any browser.
