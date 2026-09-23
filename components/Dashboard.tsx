@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import Link from "next/link";
@@ -90,7 +90,10 @@ function SkeletonCards() {
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-danger/40 bg-danger-soft/40 py-14 text-center">
+    <div
+      role="alert"
+      className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-danger/40 bg-danger-soft/40 py-14 text-center"
+    >
       <AlertTriangle className="h-6 w-6 text-danger" strokeWidth={1.5} />
       <p className="max-w-xs text-sm text-danger">{message}</p>
       <button
@@ -122,6 +125,9 @@ export default function Dashboard({ userName }: { userName: string }) {
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<{ id: string; name: string; subject: string } | null>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const deleteButtonRef = useRef<HTMLButtonElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   function setTab(next: Tab) {
     setTabState(next);
@@ -193,6 +199,38 @@ export default function Dashboard({ userName }: { userName: string }) {
     const timeout = setTimeout(() => setSuccessMessage(null), 3000);
     return () => clearTimeout(timeout);
   }, [successMessage]);
+
+  // Keyboard/screen-reader support for the delete-confirmation dialog: move
+  // focus in on open (to the non-destructive default), trap Tab/Shift+Tab
+  // between its two buttons so focus can't silently land on page content
+  // behind the overlay, close on Escape, and restore focus to whatever
+  // triggered it on close — matching the standard modal dialog pattern.
+  useEffect(() => {
+    if (!confirmingDelete) return;
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    cancelButtonRef.current?.focus();
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setConfirmingDelete(null);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      if (e.shiftKey && document.activeElement === cancelButtonRef.current) {
+        e.preventDefault();
+        deleteButtonRef.current?.focus();
+      } else if (!e.shiftKey && document.activeElement === deleteButtonRef.current) {
+        e.preventDefault();
+        cancelButtonRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocusedRef.current?.focus();
+    };
+  }, [confirmingDelete]);
 
   async function handleAction(action: "delete" | "unsubscribe" | "ignore", messageId: string) {
     setActionError(null);
@@ -300,7 +338,7 @@ export default function Dashboard({ userName }: { userName: string }) {
         {tab === "spam" && (
           <div>
             {actionError && (
-              <div className="mb-4 flex items-start gap-2 rounded-lg bg-danger-soft px-3.5 py-2.5 text-sm text-danger">
+              <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg bg-danger-soft px-3.5 py-2.5 text-sm text-danger">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} />
                 {actionError}
               </div>
@@ -420,12 +458,14 @@ export default function Dashboard({ userName }: { userName: string }) {
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <button
+                ref={cancelButtonRef}
                 onClick={() => setConfirmingDelete(null)}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-hover"
               >
                 Cancel
               </button>
               <button
+                ref={deleteButtonRef}
                 onClick={() => {
                   handleAction("delete", confirmingDelete.id);
                   setConfirmingDelete(null);
@@ -440,7 +480,7 @@ export default function Dashboard({ userName }: { userName: string }) {
       )}
 
       {successMessage && (
-        <div className="fixed inset-x-0 bottom-6 z-30 flex justify-center px-4">
+        <div className="fixed inset-x-0 bottom-6 z-30 flex justify-center px-4" role="status" aria-live="polite">
           <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm shadow-lg">
             <CheckCircle2 className="h-4 w-4 text-accent" strokeWidth={2} />
             {successMessage}
