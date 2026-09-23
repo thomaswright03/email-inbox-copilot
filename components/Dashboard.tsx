@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { signOut } from "next-auth/react";
+import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Inbox, LogOut, MailX, ShieldAlert, ShieldCheck, Sparkles, Trash2, EyeOff, AlertTriangle } from "lucide-react";
@@ -265,6 +266,16 @@ export default function Dashboard({ userName }: { userName: string }) {
           </div>
         )}
       </main>
+
+      <footer className="mx-auto max-w-2xl px-4 pb-6 text-xs text-muted">
+        <Link href="/terms" target="_blank" className="hover:text-foreground">
+          Terms of Service
+        </Link>
+        <span className="mx-2">·</span>
+        <Link href="/privacy" target="_blank" className="hover:text-foreground">
+          Privacy Policy
+        </Link>
+      </footer>
     </div>
   );
 }

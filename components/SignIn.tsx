@@ -1,6 +1,7 @@
 "use client";
 
 import { signIn } from "next-auth/react";
+import Link from "next/link";
 import { Sparkles } from "lucide-react";
 
 function GoogleIcon() {
@@ -58,7 +59,15 @@ export default function SignIn() {
         </button>
 
         <p className="mt-5 text-center text-xs text-muted">
-          Read‑only until you delete, unsubscribe, or ignore something yourself.
+          By continuing, you agree to our{" "}
+          <Link href="/terms" target="_blank" className="underline underline-offset-2 hover:text-foreground">
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" target="_blank" className="underline underline-offset-2 hover:text-foreground">
+            Privacy Policy
+          </Link>
+          .
         </p>
       </div>
     </div>
