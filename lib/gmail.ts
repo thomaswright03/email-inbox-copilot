@@ -6,7 +6,6 @@ export type ParsedEmail = {
   from: string;
   subject: string;
   snippet: string;
-  bodyText: string;
   date: string;
   listUnsubscribe: string | null;
   isInInbox: boolean;
@@ -18,35 +17,11 @@ function getGmailClient(accessToken: string): gmail_v1.Gmail {
   return google.gmail({ version: "v1", auth });
 }
 
-function decodeBase64Url(data: string): string {
-  return Buffer.from(data, "base64url").toString("utf-8");
-}
-
-function extractPlainText(payload: gmail_v1.Schema$MessagePart | undefined): string {
-  if (!payload) return "";
-
-  if (payload.mimeType === "text/plain" && payload.body?.data) {
-    return decodeBase64Url(payload.body.data);
-  }
-
-  if (payload.parts) {
-    for (const part of payload.parts) {
-      const text = extractPlainText(part);
-      if (text) return text;
-    }
-  }
-
-  if (payload.mimeType === "text/html" && payload.body?.data) {
-    const html = decodeBase64Url(payload.body.data);
-    return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  }
-
-  return "";
-}
-
 function getHeader(headers: gmail_v1.Schema$MessagePartHeader[] | undefined, name: string): string {
   return headers?.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
 }
+
+const METADATA_HEADERS = ["From", "Subject", "Date", "List-Unsubscribe"];
 
 export async function fetchTodaysMessages(accessToken: string): Promise<ParsedEmail[]> {
   const gmail = getGmailClient(accessToken);
@@ -62,12 +37,15 @@ export async function fetchTodaysMessages(accessToken: string): Promise<ParsedEm
 
   const messages = await Promise.all(
     messageIds.map(async (m) => {
-      const full = await gmail.users.messages.get({
+      // metadata-only: this app never reads message bodies, so we never
+      // request them from Gmail in the first place.
+      const meta = await gmail.users.messages.get({
         userId: "me",
         id: m.id!,
-        format: "full",
+        format: "metadata",
+        metadataHeaders: METADATA_HEADERS,
       });
-      return full.data;
+      return meta.data;
     })
   );
 
@@ -80,7 +58,6 @@ export async function fetchTodaysMessages(accessToken: string): Promise<ParsedEm
       from: getHeader(headers, "From"),
       subject: getHeader(headers, "Subject") || "(no subject)",
       snippet: msg.snippet ?? "",
-      bodyText: extractPlainText(msg.payload).slice(0, 2000),
       date: getHeader(headers, "Date"),
       listUnsubscribe: getHeader(headers, "List-Unsubscribe") || null,
       isInInbox: labelIds.includes("INBOX") && !labelIds.includes("SPAM"),

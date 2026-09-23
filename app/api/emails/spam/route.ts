@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { fetchTodaysMessages } from "@/lib/gmail";
 import { classifySpam } from "@/lib/ai";
+import { logAuditEvent } from "@/lib/audit";
 
 export async function GET() {
   const session = await auth();
@@ -9,6 +10,7 @@ export async function GET() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  const userEmail = session.user?.email ?? "unknown";
   const emails = await fetchTodaysMessages(session.accessToken);
   const verdicts = await classifySpam(emails);
   const spamIds = new Set(verdicts.filter((v) => v.isSpam).map((v) => v.id));
@@ -23,6 +25,12 @@ export async function GET() {
       hasUnsubscribe: Boolean(e.listUnsubscribe),
       reason: verdicts.find((v) => v.id === e.id)?.reason ?? "",
     }));
+
+  await Promise.all(
+    flashcards.map((card) =>
+      logAuditEvent({ userEmail, action: "classified_spam", messageId: card.id, detail: card.reason })
+    )
+  );
 
   return NextResponse.json({ flashcards });
 }

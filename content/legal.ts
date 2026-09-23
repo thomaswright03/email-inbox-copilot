@@ -24,7 +24,7 @@ When you connect your Gmail account, you grant Inbox Buddy the following Google 
 - **Read access** to your Gmail messages ("gmail.readonly")
 - **Modify access**, used only to move a message to Trash or remove it from your Inbox when you choose to Delete or Unsubscribe from a sender ("gmail.modify")
 
-Specifically, for messages received in roughly the last 24 hours, Inbox Buddy retrieves the sender, subject line, a short preview snippet, the date, and the full message body content. The full body is loaded into server memory while your summary is generated, but it is not sent to Google's Gemini API and is not stored — only the sender, subject line, and short preview snippet are sent for AI processing (see Section 3).
+Specifically, for messages received in roughly the last 24 hours, Inbox Buddy retrieves only message metadata: the sender, subject line, a short preview snippet Gmail itself generates, and the date. We do not request or retrieve full message body content from Gmail at all — only the sender, subject line, and short preview snippet are sent for AI processing (see Section 3).
 
 We do not access your Gmail account except when you are actively using the Service.
 
@@ -52,11 +52,11 @@ We do retain, for the duration of your signed-in session:
 - Your Google OAuth access token (used to make Gmail API calls on your behalf), stored in an encrypted session cookie
 - The fact that you agreed to this Privacy Policy and our Terms of Service, and the version and date you agreed
 
-We do not currently keep a durable log of Delete or Unsubscribe actions (who did what, to which message, when) beyond standard hosting-platform request logs.
+We keep a durable log of Delete, Unsubscribe, Ignore, and AI spam-classification events — which account, which action, which message ID, and when — in a separate database used only for this record. That log does not include message content (sender, subject, or snippet), only the fact that an action occurred.
 
 ## 5. Data retention
 
-Because we do not independently store your email content, its retention is governed by Gmail's own retention policies, including Gmail's Trash retention period after you delete a message through Inbox Buddy. Your session data (Section 4) is retained only for the life of your signed-in session, which currently lasts up to approximately one hour before you need to sign in again.
+Because we do not independently store your email content, its retention is governed by Gmail's own retention policies, including Gmail's Trash retention period after you delete a message through Inbox Buddy. Your session data (Section 4) is retained only for the life of your signed-in session, which lasts up to one hour before you need to sign in again. Audit log entries (Section 4) are retained for as long as your account is active, so we can reconstruct account activity if needed.
 
 ## 6. Your choices and rights
 

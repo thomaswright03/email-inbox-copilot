@@ -10,6 +10,13 @@ const GMAIL_SCOPES = [
 ].join(" ");
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  session: {
+    strategy: "jwt",
+    // Matches the Google access token's ~1 hour lifetime (see Privacy Policy
+    // Section 5) — without this, the session cookie would outlive the token
+    // it depends on by NextAuth's 30-day default.
+    maxAge: 60 * 60,
+  },
   providers: [
     Google({
       authorization: {

@@ -1,0 +1,52 @@
+import { neon } from "@neondatabase/serverless";
+import type { NeonQueryFunction } from "@neondatabase/serverless";
+
+export type AuditAction = "delete" | "unsubscribe" | "ignore" | "classified_spam";
+
+type Sql = NeonQueryFunction<false, false>;
+
+let schemaReady: Promise<void> | null = null;
+
+function getSql(): Sql | null {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) return null;
+  return neon(connectionString);
+}
+
+async function ensureSchema(sql: Sql): Promise<void> {
+  if (!schemaReady) {
+    schemaReady = sql`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id BIGSERIAL PRIMARY KEY,
+        user_email TEXT NOT NULL,
+        action TEXT NOT NULL,
+        message_id TEXT,
+        detail TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `.then(() => undefined);
+  }
+  await schemaReady;
+}
+
+// Audit logging is best-effort: a logging failure should never block the
+// user-facing action it's recording. If DATABASE_URL isn't configured yet,
+// this silently no-ops rather than breaking Delete/Unsubscribe/spam listing.
+export async function logAuditEvent(entry: {
+  userEmail: string;
+  action: AuditAction;
+  messageId?: string;
+  detail?: string;
+}): Promise<void> {
+  try {
+    const sql = getSql();
+    if (!sql) return;
+    await ensureSchema(sql);
+    await sql`
+      INSERT INTO audit_log (user_email, action, message_id, detail)
+      VALUES (${entry.userEmail}, ${entry.action}, ${entry.messageId ?? null}, ${entry.detail ?? null})
+    `;
+  } catch (err) {
+    console.error("audit log write failed", err);
+  }
+}
