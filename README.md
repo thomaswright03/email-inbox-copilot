@@ -1,4 +1,4 @@
-# Inbox Copilot
+# Inbox Buddy
 
 A daily email summary + spam flashcards front end, built on Gmail (works from any browser on Windows or Mac — no native mail client integration needed).
 

@@ -4,7 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Inbox Copilot",
+  title: "Inbox Buddy",
   description: "Daily email summary and spam flashcards",
 };
 

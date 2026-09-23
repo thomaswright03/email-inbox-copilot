@@ -120,7 +120,7 @@ export default function Dashboard({ userName }: { userName: string }) {
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-soft">
               <Sparkles className="h-3.5 w-3.5 text-accent" strokeWidth={2} />
             </div>
-            <span className="text-sm font-semibold tracking-tight">Inbox Copilot</span>
+            <span className="text-sm font-semibold tracking-tight">Inbox Buddy</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="hidden text-sm text-muted sm:inline">{userName}</span>

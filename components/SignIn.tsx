@@ -43,7 +43,7 @@ export default function SignIn() {
           <Sparkles className="h-5 w-5 text-accent" strokeWidth={2} />
         </div>
 
-        <h1 className="text-lg font-semibold tracking-tight">Inbox Copilot</h1>
+        <h1 className="text-lg font-semibold tracking-tight">Inbox Buddy</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
           Connect Gmail for a daily summary of what matters, and a spam tab that catches what your junk folder
           missed.
