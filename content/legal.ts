@@ -1,23 +1,21 @@
-// Draft legal documents prepared for attorney review before publication.
-// Bracketed [ATTORNEY TO CONFIRM] / [ENGINEERING TO CONFIRM] items are
-// open decisions, not filled-in placeholders — resolve them before this
-// is treated as final. LEGAL_VERSION gates the in-app consent screen:
-// bump it whenever the substance of either document changes so users
-// are asked to re-agree.
+// Legal documents for Inbox Buddy, prepared for attorney review before
+// publication. LEGAL_VERSION gates the in-app consent screen: bump it
+// whenever the substance of either document changes so users are asked
+// to re-agree.
 
 export const LEGAL_VERSION = "2026-09-23";
 export const LEGAL_LAST_UPDATED = "September 23, 2026";
+export const CONTACT_EMAIL = "t@thomasewright.com";
+export const COMPANY_NAME = "Wright AI Solutions LLC";
 
 export const PRIVACY_POLICY = `
 **Last updated:** ${LEGAL_LAST_UPDATED}
 
-> **Note to reviewing attorney:** this is a first draft, prepared to minimize your review time. Items marked **[ATTORNEY TO CONFIRM]** or **[ENGINEERING TO CONFIRM]** are open decisions that need to be resolved before this is published as final. Everything else describes the Service's actual, current technical behavior as of the date above and should be checked against the live product before publication.
-
-This Privacy Policy explains how Inbox Buddy ("Inbox Buddy," "we," "us," or "our"), a product of **[LEGAL ENTITY NAME — e.g., an Arizona limited liability company]** ("Company"), collects, uses, and discloses information when you use the Inbox Buddy service (the "Service").
+This Privacy Policy explains how Inbox Buddy ("Inbox Buddy," "we," "us," or "our"), a product of ${COMPANY_NAME} ("Company"), collects, uses, and discloses information when you use the Inbox Buddy service (the "Service").
 
 ## 1. Who this policy covers
 
-This policy applies to anyone who connects a Gmail account to Inbox Buddy ("you," "user"). If you use Inbox Buddy on behalf of an organization (for example, a law firm), you confirm you have authority to connect that organization's mailbox and to agree to this policy and our Terms of Service on the organization's behalf. **[ATTORNEY TO CONFIRM]** whether a separate signed customer agreement / data processing agreement should govern organizational use instead of, or in addition to, this policy.
+This policy applies to anyone who connects a Gmail account to Inbox Buddy ("you," "user"). If you use Inbox Buddy on behalf of an organization (for example, a law firm), you confirm you have authority to connect that organization's mailbox and to agree to this policy and our Terms of Service on the organization's behalf. We do not currently have a separate signed data processing agreement for organizational customers; if your organization requires one before connecting a mailbox, contact us first at ${CONTACT_EMAIL}.
 
 ## 2. Information we access
 
@@ -26,7 +24,7 @@ When you connect your Gmail account, you grant Inbox Buddy the following Google 
 - **Read access** to your Gmail messages ("gmail.readonly")
 - **Modify access**, used only to move a message to Trash or remove it from your Inbox when you choose to Delete or Unsubscribe from a sender ("gmail.modify")
 
-Specifically, for messages received in roughly the last 24 hours, Inbox Buddy retrieves: the sender, subject line, a short preview snippet, the date, and — currently — the full message body content. The full body is loaded into server memory to support future features but is not itself sent to any AI provider or stored (see Sections 3 and 4). **[ENGINEERING TO CONFIRM]** we intend to stop retrieving full message bodies and request only headers going forward, which would remove full body content from this list entirely.
+Specifically, for messages received in roughly the last 24 hours, Inbox Buddy retrieves the sender, subject line, a short preview snippet, the date, and the full message body content. The full body is loaded into server memory while your summary is generated, but it is not sent to Google's Gemini API and is not stored — only the sender, subject line, and short preview snippet are sent for AI processing (see Section 3).
 
 We do not access your Gmail account except when you are actively using the Service.
 
@@ -36,7 +34,7 @@ We use the information above only to operate the Service:
 
 - **AI-generated summary and spam detection.** The sender, subject line, and short preview snippet of your recent messages are sent to Google's Gemini API, a third-party AI service operated by Google, to generate your daily summary and to help identify messages that are likely spam. This is the only third party that receives any of your email content.
 
-  **[ATTORNEY TO CONFIRM — IMPORTANT]:** As of the date of this policy, this feature uses a standard, no-cost tier of Google's Gemini API. Google's own published terms for that tier may permit Google to use submitted content to improve its products, which differs from paid tiers that carry a no-training commitment. We **[are moving / intend to move / have moved — select one]** to a paid tier with a no-training commitment before this Service is used to process any organization's confidential or privileged correspondence. Do not rely on this Service for confidential, privileged, or legally sensitive email until this item is resolved and this bracket is removed.
+  As of the date of this policy, this feature uses Google's standard, no-cost Gemini API tier. Under Google's published terms for that tier, Google may use content submitted through it to improve its own products — this differs from Google's paid tiers, which carry a no-training commitment. We have not entered into a separate data processing agreement with Google for this use. **If your use of Inbox Buddy involves confidential, privileged, or otherwise legally sensitive email, you should not rely on this Service until that changes.** We intend to move to a paid, no-training tier before onboarding any customer whose email carries that kind of sensitivity, but as of this policy's date that change has not yet been made.
 
 - **Taking the actions you request.** When you click Delete, we ask Gmail to move that message to Trash. When you click Unsubscribe, we send a request to the unsubscribe link the sender itself published in that message's headers — we cannot guarantee the sender actually honors it. Ignore takes no action on your mailbox.
 
@@ -54,17 +52,17 @@ We do retain, for the duration of your signed-in session:
 - Your Google OAuth access token (used to make Gmail API calls on your behalf), stored in an encrypted session cookie
 - The fact that you agreed to this Privacy Policy and our Terms of Service, and the version and date you agreed
 
-**[ENGINEERING TO CONFIRM]:** we do not currently keep a durable log of Delete or Unsubscribe actions (who did what, to which message, when) beyond standard hosting-platform request logs. We intend to add a persisted audit log for these actions.
+We do not currently keep a durable log of Delete or Unsubscribe actions (who did what, to which message, when) beyond standard hosting-platform request logs.
 
 ## 5. Data retention
 
-Because we do not independently store your email content, its retention is governed by Gmail's own retention policies, including Gmail's Trash retention period after you delete a message through Inbox Buddy. Your session data (Section 4) is retained only for the life of your signed-in session. **[ENGINEERING TO CONFIRM]** current session lifetime once token refresh is implemented.
+Because we do not independently store your email content, its retention is governed by Gmail's own retention policies, including Gmail's Trash retention period after you delete a message through Inbox Buddy. Your session data (Section 4) is retained only for the life of your signed-in session, which currently lasts up to approximately one hour before you need to sign in again.
 
 ## 6. Your choices and rights
 
 You can disconnect Inbox Buddy at any time from your [Google Account permissions page](https://myaccount.google.com/permissions) — this immediately invalidates our access token and stops all access to your mailbox.
 
-To ask a question, request information about what we've processed, or raise a concern, contact us at **[PRIVACY CONTACT EMAIL]**. **[ATTORNEY TO CONFIRM]** whether specific response-timeline commitments should be added here, depending on which jurisdictions' privacy laws apply.
+To ask a question, request information about what we've processed, or raise a concern, contact us at ${CONTACT_EMAIL}. We will respond within 30 days.
 
 ## 7. Children's privacy
 
@@ -72,7 +70,7 @@ Inbox Buddy is not directed to, and is not knowingly used by, children under 18.
 
 ## 8. Security
 
-We use industry-standard practices including encrypted connections (HTTPS), OAuth-based authentication, and encrypted session storage. **[ATTORNEY / ENGINEERING TO CONFIRM]:** a dedicated security audit of this Service has not yet been completed as of the date of this policy. This section should be revisited once one has been.
+We use industry-standard practices including encrypted connections (HTTPS), OAuth-based authentication, and encrypted session storage. We have not yet completed a dedicated third-party security audit of this Service.
 
 ## 9. Third-party services
 
@@ -85,7 +83,7 @@ Inbox Buddy's use and transfer of information received from Google APIs adheres 
 
 ## 10. International data transfers
 
-**[ATTORNEY TO CONFIRM]:** Inbox Buddy is hosted on Vercel, and Google's infrastructure may process data outside your country of residence. Add specific transfer-mechanism language once hosting region and customer jurisdictions are confirmed.
+Inbox Buddy is hosted in the United States (via Vercel), and Google's infrastructure may process data in the United States or other countries where Google operates. By using the Service, you consent to this transfer and processing.
 
 ## 11. Changes to this policy
 
@@ -93,15 +91,13 @@ We may update this Privacy Policy from time to time. If we make a material chang
 
 ## 12. Contact us
 
-Questions about this policy can be sent to **[PRIVACY CONTACT EMAIL]**.
+Questions about this policy can be sent to ${CONTACT_EMAIL}.
 `.trim();
 
 export const TERMS_OF_SERVICE = `
 **Last updated:** ${LEGAL_LAST_UPDATED}
 
-> **Note to reviewing attorney:** items marked **[ATTORNEY TO CONFIRM]** are open decisions that need to be made before this is published as final. Everything else is a complete first draft.
-
-These Terms of Service ("Terms") govern your access to and use of Inbox Buddy (the "Service"), provided by **[LEGAL ENTITY NAME]** ("Company," "we," "us"). By connecting your Gmail account and using the Service, you agree to these Terms and to our Privacy Policy. If you do not agree, do not use the Service.
+These Terms of Service ("Terms") govern your access to and use of Inbox Buddy (the "Service"), provided by ${COMPANY_NAME} ("Company," "we," "us"). By connecting your Gmail account and using the Service, you agree to these Terms and to our Privacy Policy. If you do not agree, do not use the Service.
 
 ## 1. Eligibility and authority
 
@@ -146,19 +142,19 @@ Your Google account and the emails in it remain governed by Google's own terms. 
 
 ## 7. No professional advice
 
-Inbox Buddy is a productivity tool. It does not provide legal, medical, financial, or other professional advice, and nothing it generates should be treated as such. **[ATTORNEY TO CONFIRM]** additional language here if the Service will specifically be marketed to regulated professionals such as law firms.
+Inbox Buddy is a productivity tool. It does not provide legal, medical, financial, or other professional advice, and nothing it generates should be treated as such. If you use Inbox Buddy in a professional or regulated context — including the practice of law — you remain solely responsible for complying with any professional conduct, confidentiality, or ethical obligations that apply to you, including obligations regarding the use of AI tools and third-party services with client or case information. Inbox Buddy does not evaluate or certify compliance with any such obligations.
 
 ## 8. Disclaimer of warranties
 
-THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE," WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, OR THAT THE SERVICE WILL BE UNINTERRUPTED, ERROR-FREE, OR SECURE. **[ATTORNEY TO CONFIRM]** enforceability and any required consumer-protection carve-outs in the relevant jurisdiction(s).
+THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE," WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, OR THAT THE SERVICE WILL BE UNINTERRUPTED, ERROR-FREE, OR SECURE.
 
 ## 9. Limitation of liability
 
-TO THE FULLEST EXTENT PERMITTED BY LAW, **[LEGAL ENTITY NAME]** WILL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF DATA, REVENUE, OR PROFITS, ARISING FROM YOUR USE OF THE SERVICE. **[ATTORNEY TO CONFIRM]** liability cap amount (e.g., fees paid in the preceding 12 months, or a fixed amount), and whether this clause is appropriate given the sensitivity of data this Service may process for a professional-services customer.
+TO THE FULLEST EXTENT PERMITTED BY LAW, ${COMPANY_NAME.toUpperCase()} WILL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF DATA, REVENUE, OR PROFITS, ARISING FROM YOUR USE OF THE SERVICE. OUR TOTAL LIABILITY TO YOU FOR ANY CLAIM ARISING FROM THESE TERMS OR THE SERVICE WILL NOT EXCEED ONE HUNDRED DOLLARS ($100) OR THE AMOUNT YOU PAID US FOR THE SERVICE IN THE TWELVE (12) MONTHS BEFORE THE CLAIM AROSE, WHICHEVER IS GREATER.
 
 ## 10. Indemnification
 
-**[ATTORNEY TO CONFIRM]** whether a mutual or one-directional indemnification clause is appropriate here, and its scope.
+You agree to indemnify and hold ${COMPANY_NAME} harmless from any claims, damages, liabilities, and expenses (including reasonable attorneys' fees) arising from your use of the Service, your violation of these Terms, or your violation of any rights of a third party, including anyone whose information appears in email you process through the Service.
 
 ## 11. Termination
 
@@ -170,9 +166,9 @@ We may update these Terms from time to time. If we make a material change, we wi
 
 ## 13. Governing law and disputes
 
-**[ATTORNEY TO CONFIRM]** governing law (Arizona is the Company's home jurisdiction), venue, and whether an arbitration clause and/or class-action waiver should be included.
+These Terms are governed by the laws of the State of Arizona, without regard to its conflict-of-laws principles. Any dispute arising from these Terms or the Service will be brought exclusively in the state or federal courts located in Arizona, and you consent to personal jurisdiction there.
 
 ## 14. Contact us
 
-Questions about these Terms can be sent to **[LEGAL / SUPPORT CONTACT EMAIL]**.
+Questions about these Terms can be sent to ${CONTACT_EMAIL}.
 `.trim();
