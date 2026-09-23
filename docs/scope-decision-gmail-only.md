@@ -1,8 +1,8 @@
-# Scope Decision — Gmail-Only, Browser-Based (Pending Confirmation)
+# Scope Decision — Gmail-Only, Browser-Based
 
 **Product:** Inbox Buddy (`email-inbox-copilot`)
 **Date:** 2026-09-23
-**Status:** DRAFT — needs Thomas's explicit confirmation before this counts as a settled decision
+**Status:** CONFIRMED by Thomas Wright, 2026-09-23 — Option A (Gmail-only, browser-based) is the accepted scope
 
 ## The gap
 
@@ -32,15 +32,15 @@ feature, not a quick fix — it needs a new Azure AD app registration (a busines
 and setup step, the same category of work as the original Google Cloud Console setup),
 new OAuth consent flows, and testing against a second provider's quirks. Effort: Large.
 
-## Recommendation
+## Decision
 
-Option A, for now. The product's actual current audience ("any of my business partners
-who wants to use it") hasn't surfaced a concrete need for Outlook/IMAP yet, and building
-that speculatively before anyone's asked for it would be scope creep in the other
-direction. If a specific partner does need it, that's a clear, concrete trigger to revisit
-Option B rather than guessing at the requirement now.
+**Option A — Gmail-only, browser-based is the confirmed scope**, as of 2026-09-23. The
+product's actual current audience ("any of my business partners who wants to use it")
+hasn't surfaced a concrete need for Outlook/IMAP, and building that speculatively before
+anyone's asked for it would be scope creep in the other direction.
 
-## What still needs to happen
+## Revisit trigger
 
-This file existing is not itself the decision — it's the record, once Thomas confirms
-which option to take. Until confirmed, treat the scope as still open, not settled.
+Revisit this decision (Option B — build a second connector) if a specific business partner
+indicates they need Outlook, IMAP, or native mail-client integration to use Inbox Buddy.
+Until then, this is the settled scope, not an open question.
