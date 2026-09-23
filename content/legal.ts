@@ -166,7 +166,21 @@ We may update these Terms from time to time. If we make a material change, we wi
 
 ## 13. Governing law and disputes
 
-These Terms are governed by the laws of the State of Arizona, without regard to its conflict-of-laws principles. Any dispute arising from these Terms or the Service will be brought exclusively in the state or federal courts located in Arizona, and you consent to personal jurisdiction there.
+These Terms are governed by the laws of the State of Arizona, without regard to its conflict-of-laws principles.
+
+**Agreement to arbitrate.** You and ${COMPANY_NAME} agree that any dispute, claim, or controversy arising out of or relating to these Terms or the Service (a "Dispute") will be resolved by binding individual arbitration, rather than in court, except as set out below. This includes Disputes based in contract, tort, statute, or any other legal theory, regardless of whether the Dispute arose before or after you agreed to these Terms.
+
+**Exceptions.** Either party may bring an individual action in small claims court for a qualifying Dispute, and either party may seek injunctive or other equitable relief in court to prevent actual or threatened infringement, misappropriation, or violation of intellectual property or confidentiality obligations.
+
+**Arbitration procedure.** Arbitration will be administered by the American Arbitration Association ("AAA") under its Consumer Arbitration Rules (or, if neither party is a consumer, its Commercial Arbitration Rules), by a single arbitrator, in Arizona or by videoconference if the arbitrator permits. The arbitrator's decision is final and binding, and judgment on it may be entered in any court of competent jurisdiction. Payment of AAA filing, administrative, and arbitrator fees is governed by the AAA's rules, except that if those rules would require you to pay more than a comparable court filing fee, we will reimburse the difference upon request.
+
+**Class action waiver.** YOU AND ${COMPANY_NAME.toUpperCase()} AGREE THAT EACH MAY BRING CLAIMS AGAINST THE OTHER ONLY IN AN INDIVIDUAL CAPACITY, AND NOT AS A PLAINTIFF OR CLASS MEMBER IN ANY PURPORTED CLASS, COLLECTIVE, OR REPRESENTATIVE PROCEEDING. Unless both parties agree otherwise in writing, the arbitrator may not consolidate more than one person's claims and may not otherwise preside over any form of a representative or class proceeding.
+
+**Right to opt out.** You may opt out of this arbitration agreement by sending written notice to ${CONTACT_EMAIL} within 30 days of first agreeing to these Terms, stating your name, the Google account email you use with the Service, and that you opt out of arbitration. If you opt out, neither you nor we are bound by the arbitration or class-action-waiver provisions above, and any Dispute will instead be resolved as described below.
+
+**Venue (if arbitration does not apply).** If the arbitration agreement above is found unenforceable or does not apply — including because you opted out — any Dispute will be brought exclusively in the state or federal courts located in Arizona, and you consent to personal jurisdiction there.
+
+**Severability.** If the class action waiver is found unenforceable as to a particular claim or request for relief, that claim or request must be severed from arbitration and brought in court, with the remainder of this section remaining in force.
 
 ## 14. Contact us
 
