@@ -4,17 +4,19 @@ import { trashMessage, archiveMessage, getListUnsubscribeHeader } from "@/lib/gm
 import { safeFetchUnsubscribe, UnsafeUrlError } from "@/lib/safe-fetch";
 import { parseUnsubscribeTargets } from "@/lib/unsubscribe";
 import { logAuditEvent } from "@/lib/audit";
-import { invalidateCached } from "@/lib/cache";
+import { invalidateCachedEverywhere } from "@/lib/response-cache";
 
 type ActionBody = {
   action: "delete" | "unsubscribe" | "ignore";
   messageId: string;
 };
 
-function invalidateEmailCaches(userEmail: string) {
+async function invalidateEmailCaches(userEmail: string) {
   const today = new Date().toISOString().slice(0, 10);
-  invalidateCached(`today:${userEmail}:${today}`);
-  invalidateCached(`spam:${userEmail}:${today}`);
+  await Promise.all([
+    invalidateCachedEverywhere(`today:${userEmail}:${today}`),
+    invalidateCachedEverywhere(`spam:${userEmail}:${today}`),
+  ]);
 }
 
 export async function POST(req: Request) {
@@ -40,7 +42,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Couldn't delete this email right now" }, { status: 502 });
     }
     await logAuditEvent({ userEmail, action: "delete", messageId });
-    invalidateEmailCaches(userEmail);
+    await invalidateEmailCaches(userEmail);
     return NextResponse.json({ ok: true });
   }
 
@@ -92,11 +94,11 @@ export async function POST(req: Request) {
     } catch (err) {
       console.error("Failed to archive message via Gmail after unsubscribe:", err);
       await logAuditEvent({ userEmail, action: "unsubscribe", messageId, detail: "succeeded, archive failed" });
-      invalidateEmailCaches(userEmail);
+      await invalidateEmailCaches(userEmail);
       return NextResponse.json({ ok: true, warning: "Unsubscribed, but couldn't archive the message" });
     }
     await logAuditEvent({ userEmail, action: "unsubscribe", messageId, detail: "succeeded" });
-    invalidateEmailCaches(userEmail);
+    await invalidateEmailCaches(userEmail);
     return NextResponse.json({ ok: true });
   }
 

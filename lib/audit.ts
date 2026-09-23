@@ -1,17 +1,9 @@
-import { neon } from "@neondatabase/serverless";
-import type { NeonQueryFunction } from "@neondatabase/serverless";
+import { getSql } from "./db";
+import type { Sql } from "./db";
 
 export type AuditAction = "delete" | "unsubscribe" | "ignore" | "classified_spam";
 
-type Sql = NeonQueryFunction<false, false>;
-
 let schemaReady: Promise<void> | null = null;
-
-function getSql(): Sql | null {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) return null;
-  return neon(connectionString);
-}
 
 async function ensureSchema(sql: Sql): Promise<void> {
   if (!schemaReady) {
