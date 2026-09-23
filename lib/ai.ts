@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { z } from "zod";
 import type { ParsedEmail } from "./gmail";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -21,6 +22,34 @@ export async function summarizeToday(emails: ParsedEmail[]): Promise<string> {
 }
 
 export type SpamVerdict = { id: string; isSpam: boolean; reason: string };
+
+const SpamVerdictSchema = z.object({
+  id: z.string(),
+  isSpam: z.boolean(),
+  reason: z.string(),
+});
+const SpamVerdictArraySchema = z.array(SpamVerdictSchema);
+
+// The model's output only ever drives a UI suggestion (a card the user still
+// has to click Delete/Unsubscribe/Ignore on themselves) — but it's still a
+// destructive-adjacent decision point, so a malformed or hallucinated entry
+// (wrong types, a missing field, an id that isn't really a string) is
+// dropped here rather than trusted implicitly downstream.
+export function parseSpamVerdicts(raw: unknown): SpamVerdict[] {
+  const result = SpamVerdictArraySchema.safeParse(raw);
+  if (result.success) return result.data;
+
+  // Fall back to keeping only the entries that validate individually, so one
+  // malformed entry in an otherwise-good response doesn't discard everything.
+  if (!Array.isArray(raw)) return [];
+  const valid: SpamVerdict[] = [];
+  for (const item of raw) {
+    const parsed = SpamVerdictSchema.safeParse(item);
+    if (parsed.success) valid.push(parsed.data);
+    else console.warn("Dropping malformed spam-classification entry:", item);
+  }
+  return valid;
+}
 
 const SPAM_KEYWORDS = [
   "unsubscribe",
@@ -66,7 +95,7 @@ export async function classifySpam(emails: ParsedEmail[]): Promise<SpamVerdict[]
   try {
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return [];
-    return JSON.parse(jsonMatch[0]) as SpamVerdict[];
+    return parseSpamVerdicts(JSON.parse(jsonMatch[0]));
   } catch {
     return [];
   }

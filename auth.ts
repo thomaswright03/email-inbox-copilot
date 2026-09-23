@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import { refreshGoogleAccessToken } from "@/lib/google-auth";
 
 const GMAIL_SCOPES = [
   "openid",
@@ -9,13 +10,21 @@ const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.modify",
 ].join(" ");
 
+// Refresh the Google access token this many seconds before it actually
+// expires, so a request never races an about-to-expire token.
+const REFRESH_MARGIN_SECONDS = 5 * 60;
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   session: {
     strategy: "jwt",
-    // Matches the Google access token's ~1 hour lifetime (see Privacy Policy
-    // Section 5) — without this, the session cookie would outlive the token
-    // it depends on by NextAuth's 30-day default.
-    maxAge: 60 * 60,
+    // The Google access token itself is kept fresh independently (see the
+    // jwt callback below), so the session cookie no longer needs to be
+    // pinned to that token's own ~1 hour lifetime. maxAge is now a plain
+    // idle-timeout ceiling; updateAge rolls it forward on every active
+    // request, so a user who keeps using the app in a day never gets
+    // signed out, while a genuinely abandoned session still expires.
+    maxAge: 60 * 60 * 24 * 30,
+    updateAge: 60 * 60,
   },
   providers: [
     Google({
@@ -39,7 +48,28 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.legalVersionAccepted = session.legalVersionAccepted as string;
         token.legalAcceptedAt = Date.now();
       }
-      return token;
+
+      const expiresAtSeconds = (token.expiresAt as number | undefined) ?? 0;
+      const stillFresh = Date.now() / 1000 < expiresAtSeconds - REFRESH_MARGIN_SECONDS;
+      if (stillFresh) return token;
+
+      const refreshToken = token.refreshToken as string | undefined;
+      if (!refreshToken) {
+        return { ...token, error: "RefreshAccessTokenError" };
+      }
+      try {
+        const refreshed = await refreshGoogleAccessToken(refreshToken);
+        return {
+          ...token,
+          accessToken: refreshed.accessToken,
+          expiresAt: refreshed.expiresAt,
+          refreshToken: refreshed.refreshToken,
+          error: undefined,
+        };
+      } catch (err) {
+        console.error("Failed to refresh Google access token:", err);
+        return { ...token, error: "RefreshAccessTokenError" };
+      }
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken as string | undefined;

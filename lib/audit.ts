@@ -29,6 +29,22 @@ async function ensureSchema(sql: Sql): Promise<void> {
   await schemaReady;
 }
 
+// The logger above is deliberately silent when unconfigured, so nothing
+// else in the app would ever surface a misconfigured DATABASE_URL — this
+// gives an operator a way to actually check, instead of finding out only by
+// noticing the audit_log table stays empty. See app/api/health/route.ts.
+export async function getAuditLogStatus(): Promise<{ configured: boolean; reachable: boolean }> {
+  const sql = getSql();
+  if (!sql) return { configured: false, reachable: false };
+  try {
+    await sql`SELECT 1`;
+    return { configured: true, reachable: true };
+  } catch (err) {
+    console.error("audit log health check failed", err);
+    return { configured: true, reachable: false };
+  }
+}
+
 // Audit logging is best-effort: a logging failure should never block the
 // user-facing action it's recording. If DATABASE_URL isn't configured yet,
 // this silently no-ops rather than breaking Delete/Unsubscribe/spam listing.

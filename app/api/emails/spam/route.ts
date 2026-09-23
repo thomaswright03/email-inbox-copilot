@@ -3,6 +3,9 @@ import { auth } from "@/auth";
 import { fetchTodaysMessages } from "@/lib/gmail";
 import { classifySpam } from "@/lib/ai";
 import { logAuditEvent } from "@/lib/audit";
+import { getCached, setCached } from "@/lib/cache";
+
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 export async function GET() {
   const session = await auth();
@@ -11,8 +14,32 @@ export async function GET() {
   }
 
   const userEmail = session.user?.email ?? "unknown";
-  const emails = await fetchTodaysMessages(session.accessToken);
-  const verdicts = await classifySpam(emails);
+  const cacheKey = `spam:${userEmail}:${new Date().toISOString().slice(0, 10)}`;
+  const cached = getCached<Record<string, unknown>>(cacheKey);
+  if (cached) return NextResponse.json(cached);
+
+  let emails;
+  try {
+    emails = await fetchTodaysMessages(session.accessToken);
+  } catch (err) {
+    console.error("Failed to fetch today's messages from Gmail:", err);
+    return NextResponse.json(
+      { error: "Couldn't reach Gmail right now. Try again in a moment." },
+      { status: 502 }
+    );
+  }
+
+  let verdicts;
+  try {
+    verdicts = await classifySpam(emails);
+  } catch (err) {
+    console.error("Failed to classify spam via Gemini:", err);
+    return NextResponse.json(
+      { error: "Couldn't check for spam right now. Try again in a moment." },
+      { status: 502 }
+    );
+  }
+
   const spamIds = new Set(verdicts.filter((v) => v.isSpam).map((v) => v.id));
 
   const flashcards = emails
@@ -32,5 +59,7 @@ export async function GET() {
     )
   );
 
-  return NextResponse.json({ flashcards });
+  const payload = { flashcards };
+  setCached(cacheKey, payload, CACHE_TTL_MS);
+  return NextResponse.json(payload);
 }

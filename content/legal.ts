@@ -3,7 +3,7 @@
 // whenever the substance of either document changes so users are asked
 // to re-agree.
 
-export const LEGAL_VERSION = "2026-09-23";
+export const LEGAL_VERSION = "2026-09-23.2";
 export const LEGAL_LAST_UPDATED = "September 23, 2026";
 export const CONTACT_EMAIL = "t@thomasewright.com";
 export const COMPANY_NAME = "Wright AI Solutions LLC";
@@ -49,14 +49,14 @@ Inbox Buddy does not currently maintain a database of your email content. Messag
 We do retain, for the duration of your signed-in session:
 
 - Your Google account identifier, name, and email address (for display and authentication)
-- Your Google OAuth access token (used to make Gmail API calls on your behalf), stored in an encrypted session cookie
+- Your Google OAuth access token and refresh token (used to make Gmail API calls on your behalf and to keep your session active without repeated sign-ins), stored in an encrypted session cookie
 - The fact that you agreed to this Privacy Policy and our Terms of Service, and the version and date you agreed
 
 We keep a durable log of Delete, Unsubscribe, Ignore, and AI spam-classification events — which account, which action, which message ID, and when — in a separate database used only for this record. That log does not include message content (sender, subject, or snippet), only the fact that an action occurred.
 
 ## 5. Data retention
 
-Because we do not independently store your email content, its retention is governed by Gmail's own retention policies, including Gmail's Trash retention period after you delete a message through Inbox Buddy. Your session data (Section 4) is retained only for the life of your signed-in session, which lasts up to one hour before you need to sign in again. Audit log entries (Section 4) are retained for as long as your account is active, so we can reconstruct account activity if needed.
+Because we do not independently store your email content, its retention is governed by Gmail's own retention policies, including Gmail's Trash retention period after you delete a message through Inbox Buddy. Your session data (Section 4) is retained only for the life of your signed-in session. Your underlying Google access token is refreshed automatically in the background using a securely stored refresh token, so an active session does not interrupt you with repeated sign-ins; a session you stop using is ended automatically after 30 days of inactivity, or immediately if you sign out or revoke access from your Google Account. Audit log entries (Section 4) are retained for as long as your account is active, so we can reconstruct account activity if needed.
 
 ## 6. Your choices and rights
 

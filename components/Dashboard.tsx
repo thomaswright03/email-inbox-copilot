@@ -1,11 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { signOut } from "next-auth/react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Inbox, LogOut, MailX, ShieldAlert, ShieldCheck, Sparkles, Trash2, EyeOff, AlertTriangle } from "lucide-react";
+import {
+  Inbox,
+  LogOut,
+  MailX,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  EyeOff,
+  AlertTriangle,
+  RefreshCw,
+  CheckCircle2,
+} from "lucide-react";
 
 type TodayResponse = {
   summary: string;
@@ -23,6 +36,12 @@ type SpamCard = {
 };
 
 type Tab = "summary" | "spam";
+
+const ACTION_LABEL: Record<"delete" | "unsubscribe" | "ignore", string> = {
+  delete: "Deleted",
+  unsubscribe: "Unsubscribed",
+  ignore: "Ignored",
+};
 
 function parseSender(from: string): { name: string; email: string } {
   const match = from.match(/^"?([^"<]*)"?\s*<([^>]+)>$/);
@@ -69,49 +88,139 @@ function SkeletonCards() {
   );
 }
 
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-danger/40 bg-danger-soft/40 py-14 text-center">
+      <AlertTriangle className="h-6 w-6 text-danger" strokeWidth={1.5} />
+      <p className="max-w-xs text-sm text-danger">{message}</p>
+      <button
+        onClick={onRetry}
+        className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-hover"
+      >
+        <RefreshCw className="h-3.5 w-3.5" strokeWidth={2} />
+        Try again
+      </button>
+    </div>
+  );
+}
+
 export default function Dashboard({ userName }: { userName: string }) {
-  const [tab, setTab] = useState<Tab>("summary");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { data: session } = useSession();
+  const initialTab: Tab = searchParams.get("tab") === "spam" ? "spam" : "summary";
+
+  const [tab, setTabState] = useState<Tab>(initialTab);
   const [today, setToday] = useState<TodayResponse | null>(null);
   const [spamCards, setSpamCards] = useState<SpamCard[] | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [loadingSpam, setLoadingSpam] = useState(true);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [spamError, setSpamError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
+  const [pendingId, setPendingId] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<{ id: string; name: string; subject: string } | null>(null);
 
-  useEffect(() => {
-    fetch("/api/emails/today")
-      .then((r) => r.json())
-      .then(setToday)
-      .finally(() => setLoadingSummary(false));
+  function setTab(next: Tab) {
+    setTabState(next);
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "summary") params.delete("tab");
+    else params.set("tab", next);
+    const query = params.toString();
+    router.replace(query ? `/?${query}` : "/", { scroll: false });
+  }
 
+  // These only perform the fetch itself — no synchronous setState before the
+  // first await, so they're safe to call directly from the mount effect
+  // below. Callers that need to reset loading/error state first (retries)
+  // do so explicitly at the call site.
+  const fetchSummary = useCallback(() => {
+    fetch("/api/emails/today")
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error ?? "Couldn't load your summary");
+        setToday(data);
+      })
+      .catch((err: Error) => setSummaryError(err.message))
+      .finally(() => setLoadingSummary(false));
+  }, []);
+
+  const fetchSpam = useCallback(() => {
     fetch("/api/emails/spam")
-      .then((r) => r.json())
-      .then((data) => setSpamCards(data.flashcards))
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error ?? "Couldn't check for spam");
+        setSpamCards(data.flashcards);
+      })
+      .catch((err: Error) => setSpamError(err.message))
       .finally(() => setLoadingSpam(false));
   }, []);
 
+  const loadSummary = useCallback(() => {
+    setLoadingSummary(true);
+    setSummaryError(null);
+    fetchSummary();
+  }, [fetchSummary]);
+
+  const loadSpam = useCallback(() => {
+    setLoadingSpam(true);
+    setSpamError(null);
+    fetchSpam();
+  }, [fetchSpam]);
+
+  useEffect(() => {
+    fetchSummary();
+    fetchSpam();
+    // Only on mount — loadingSummary/loadingSpam/errors already start at
+    // their correct initial values, so there's nothing to reset here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // The Google access token couldn't be refreshed (e.g. the refresh token
+    // was revoked) — the session is no longer usable, so sign out cleanly
+    // and send the user back to a fresh sign-in rather than leaving them on
+    // a dashboard where every API call will keep failing.
+    if (session?.error === "RefreshAccessTokenError") {
+      signOut();
+    }
+  }, [session?.error]);
+
+  useEffect(() => {
+    if (!successMessage) return;
+    const timeout = setTimeout(() => setSuccessMessage(null), 3000);
+    return () => clearTimeout(timeout);
+  }, [successMessage]);
+
   async function handleAction(action: "delete" | "unsubscribe" | "ignore", messageId: string) {
     setActionError(null);
-    const res = await fetch("/api/actions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, messageId }),
-    });
-    const data = await res.json();
-    if (!res.ok || data.ok === false) {
-      setActionError(data.error ?? "Action failed");
-      return;
-    }
-    setRemovingIds((prev) => new Set(prev).add(messageId));
-    setTimeout(() => {
-      setSpamCards((prev) => prev?.filter((c) => c.id !== messageId) ?? null);
-      setRemovingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(messageId);
-        return next;
+    setPendingId(messageId);
+    try {
+      const res = await fetch("/api/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, messageId }),
       });
-    }, 180);
+      const data = await res.json();
+      if (!res.ok || data.ok === false) {
+        setActionError(data.error ?? "Action failed");
+        return;
+      }
+      setSuccessMessage(`${ACTION_LABEL[action]} "${spamCards?.find((c) => c.id === messageId)?.subject ?? "email"}"`);
+      setRemovingIds((prev) => new Set(prev).add(messageId));
+      setTimeout(() => {
+        setSpamCards((prev) => prev?.filter((c) => c.id !== messageId) ?? null);
+        setRemovingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(messageId);
+          return next;
+        });
+      }, 180);
+    } finally {
+      setPendingId(null);
+    }
   }
 
   return (
@@ -165,22 +274,26 @@ export default function Dashboard({ userName }: { userName: string }) {
 
         {tab === "summary" && (
           <div>
-            {!loadingSummary && (
+            {!loadingSummary && !summaryError && (
               <div className="mb-3 inline-flex items-center gap-1.5 text-sm text-muted">
                 <Inbox className="h-3.5 w-3.5" strokeWidth={2} />
                 {today?.count ?? 0} messages today
               </div>
             )}
 
-            <div className="rounded-2xl border border-border bg-surface p-5">
-              {loadingSummary ? (
-                <SkeletonLines />
-              ) : (
-                <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none prose-headings:text-sm prose-headings:font-semibold prose-p:leading-relaxed prose-li:my-0.5">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{today?.summary ?? ""}</ReactMarkdown>
-                </div>
-              )}
-            </div>
+            {summaryError ? (
+              <ErrorState message={summaryError} onRetry={loadSummary} />
+            ) : (
+              <div className="rounded-2xl border border-border bg-surface p-5">
+                {loadingSummary ? (
+                  <SkeletonLines />
+                ) : (
+                  <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none prose-headings:text-sm prose-headings:font-semibold prose-p:leading-relaxed prose-li:my-0.5">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{today?.summary ?? ""}</ReactMarkdown>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -193,13 +306,16 @@ export default function Dashboard({ userName }: { userName: string }) {
               </div>
             )}
 
-            {loadingSpam ? (
+            {spamError ? (
+              <ErrorState message={spamError} onRetry={loadSpam} />
+            ) : loadingSpam ? (
               <SkeletonCards />
             ) : spamCards && spamCards.length > 0 ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {spamCards.map((card) => {
                   const { name, email } = parseSender(card.from);
                   const isRemoving = removingIds.has(card.id);
+                  const isPending = pendingId === card.id;
                   return (
                     <div
                       key={card.id}
@@ -231,29 +347,34 @@ export default function Dashboard({ userName }: { userName: string }) {
                       <div className="mt-3.5 flex gap-2">
                         <button
                           onClick={() => setConfirmingDelete({ id: card.id, name, subject: card.subject })}
-                          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-danger-soft px-2.5 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger hover:text-danger-foreground"
+                          disabled={isPending}
+                          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-danger-soft px-2.5 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger hover:text-danger-foreground disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
-                          Delete
+                          {isPending ? "Working…" : "Delete"}
                         </button>
                         <button
                           onClick={() => handleAction("unsubscribe", card.id)}
-                          disabled={!card.hasUnsubscribe}
-                          title={card.hasUnsubscribe ? undefined : "No unsubscribe link found"}
-                          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent-soft px-2.5 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:bg-surface-hover disabled:text-muted disabled:hover:bg-surface-hover disabled:hover:text-muted"
+                          disabled={!card.hasUnsubscribe || isPending}
+                          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent-soft px-2.5 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:bg-surface-hover disabled:text-muted disabled:hover:bg-surface-hover disabled:hover:text-muted disabled:opacity-60"
                         >
                           <MailX className="h-3.5 w-3.5" strokeWidth={2} />
-                          Unsubscribe
+                          {isPending ? "Working…" : "Unsubscribe"}
                         </button>
                         <button
                           onClick={() => handleAction("ignore", card.id)}
+                          disabled={isPending}
                           title="Ignore"
                           aria-label="Ignore"
-                          className="flex items-center justify-center rounded-lg border border-border px-2.5 py-1.5 text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
+                          className="flex items-center justify-center rounded-lg border border-border px-2.5 py-1.5 text-muted transition-colors hover:bg-surface-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <EyeOff className="h-3.5 w-3.5" strokeWidth={2} />
                         </button>
                       </div>
+
+                      {!card.hasUnsubscribe && (
+                        <p className="mt-2 text-[11px] text-muted">No unsubscribe link found for this sender.</p>
+                      )}
                     </div>
                   );
                 })}
@@ -314,6 +435,15 @@ export default function Dashboard({ userName }: { userName: string }) {
                 Delete
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="fixed inset-x-0 bottom-6 z-30 flex justify-center px-4">
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm shadow-lg">
+            <CheckCircle2 className="h-4 w-4 text-accent" strokeWidth={2} />
+            {successMessage}
           </div>
         </div>
       )}

@@ -4,11 +4,18 @@ import { trashMessage, archiveMessage, getListUnsubscribeHeader } from "@/lib/gm
 import { safeFetchUnsubscribe, UnsafeUrlError } from "@/lib/safe-fetch";
 import { parseUnsubscribeTargets } from "@/lib/unsubscribe";
 import { logAuditEvent } from "@/lib/audit";
+import { invalidateCached } from "@/lib/cache";
 
 type ActionBody = {
   action: "delete" | "unsubscribe" | "ignore";
   messageId: string;
 };
+
+function invalidateEmailCaches(userEmail: string) {
+  const today = new Date().toISOString().slice(0, 10);
+  invalidateCached(`today:${userEmail}:${today}`);
+  invalidateCached(`spam:${userEmail}:${today}`);
+}
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -26,13 +33,25 @@ export async function POST(req: Request) {
   }
 
   if (action === "delete") {
-    await trashMessage(accessToken, messageId);
+    try {
+      await trashMessage(accessToken, messageId);
+    } catch (err) {
+      console.error("Failed to trash message via Gmail:", err);
+      return NextResponse.json({ ok: false, error: "Couldn't delete this email right now" }, { status: 502 });
+    }
     await logAuditEvent({ userEmail, action: "delete", messageId });
+    invalidateEmailCaches(userEmail);
     return NextResponse.json({ ok: true });
   }
 
   if (action === "unsubscribe") {
-    const header = await getListUnsubscribeHeader(accessToken, messageId);
+    let header: string | null;
+    try {
+      header = await getListUnsubscribeHeader(accessToken, messageId);
+    } catch (err) {
+      console.error("Failed to read List-Unsubscribe header from Gmail:", err);
+      return NextResponse.json({ ok: false, error: "Couldn't look up unsubscribe info right now" }, { status: 502 });
+    }
     if (!header) {
       await logAuditEvent({
         userEmail,
@@ -68,8 +87,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Unsubscribe request failed" }, { status: 502 });
     }
 
-    await archiveMessage(accessToken, messageId);
+    try {
+      await archiveMessage(accessToken, messageId);
+    } catch (err) {
+      console.error("Failed to archive message via Gmail after unsubscribe:", err);
+      await logAuditEvent({ userEmail, action: "unsubscribe", messageId, detail: "succeeded, archive failed" });
+      invalidateEmailCaches(userEmail);
+      return NextResponse.json({ ok: true, warning: "Unsubscribed, but couldn't archive the message" });
+    }
     await logAuditEvent({ userEmail, action: "unsubscribe", messageId, detail: "succeeded" });
+    invalidateEmailCaches(userEmail);
     return NextResponse.json({ ok: true });
   }
 
