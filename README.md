@@ -30,6 +30,7 @@ Fill in:
 - `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` — from step 1.
 - `AUTH_SECRET` — generate with `npx auth secret`.
 - `GEMINI_API_KEY` — free-tier key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+- `DATABASE_URL` — optional. Powers the Delete/Unsubscribe/Ignore/spam-classification audit log (`lib/audit.ts`). On Vercel: Storage tab → Create Database → search "Neon"/"Postgres" in the Marketplace. Without it, audit logging silently no-ops rather than breaking the app; `GET /api/health` (signed in) reports whether it's actually configured and reachable.
 
 ### 3. Run it
 
@@ -40,11 +41,21 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) and sign in with Google.
 
+### 4. Tests
+
+```bash
+npm test        # Vitest — SSRF blocklist, spam heuristic, header parsing, caching, token refresh
+npm run lint
+npx tsc --noEmit
+```
+
+All three also run in CI (`.github/workflows/ci.yml`) on every push and pull request.
+
 ## Notes / current scope
 
 - Only Gmail is wired up right now. Outlook/generic IMAP would need a second connector in `lib/` behind the same interface.
 - Spam detection is a heuristic pre-filter (keywords, all-caps subjects, presence of `List-Unsubscribe`) followed by a Gemini pass to cut false positives. It only looks at messages sitting in the inbox, not ones already in Junk.
 - Uses `gemini-3.5-flash-lite`, which is free (500 requests/day) as of writing — check [Google AI Studio pricing](https://ai.google.dev/pricing) if that changes.
 - "Unsubscribe" only works when the sender includes a `List-Unsubscribe` header with an HTTP(S) link (most legitimate marketing senders do; mailto-only or link-less senders will show a disabled button).
-- Access tokens aren't refreshed yet — after ~1 hour you'll need to sign in again. Add a refresh-token flow in `auth.ts` if you want long-lived sessions.
-- No packaging step yet (Phase 4 from the original spec — Electron/Tauri) since this runs fine as a plain web app in any browser.
+- Access tokens are refreshed automatically in the background (`auth.ts`, `lib/google-auth.ts`); a session stays active as long as you keep using the app, and only expires after 30 days of inactivity or if you sign out / revoke access.
+- No packaging step yet (Phase 4 from the original spec — Electron/Tauri) since this runs fine as a plain web app in any browser. See `docs/scope-decision-gmail-only.md` for the reasoning behind the Gmail-only, browser-based scope vs. the original cross-platform ask.
