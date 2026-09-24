@@ -39,8 +39,8 @@ export default function SignIn() {
 
         <h1 className="text-lg font-semibold tracking-tight">Inbox Buddy</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          Connect Gmail for a daily summary of what matters, and a spam tab that catches what your junk folder
-          missed.
+          Connect Gmail for a daily summary of your recent mail, and a spam tab that helps flag promotional
+          messages your junk folder may have missed.
         </p>
 
         <button

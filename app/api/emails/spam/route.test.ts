@@ -34,7 +34,10 @@ const EMAIL = {
 };
 
 describe("GET /api/emails/spam", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+  });
 
   it("returns 401 when not authenticated", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(null);
@@ -102,5 +105,21 @@ describe("GET /api/emails/spam", () => {
 
     expect(classifySpam).toHaveBeenCalledTimes(1);
     expect(logAuditEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the rule-based spam flags and sends nothing to Gemini when the paid tier isn't attested", async () => {
+    vi.stubEnv("GEMINI_PAID_TIER_PROJECT", "");
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-5@example.com"));
+    const promo = { ...EMAIL, subject: "LIMITED TIME: 50% OFF everything", snippet: "Unsubscribe any time" };
+    vi.mocked(fetchTodaysMessages).mockResolvedValue([promo]);
+
+    const res = await GET(getRequest());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(classifySpam).not.toHaveBeenCalled();
+    expect(body.aiGenerated).toBe(false);
+    expect(body.flashcards).toHaveLength(1);
+    expect(body.flashcards[0]).toMatchObject({ id: "m1", reason: "newsletter" });
   });
 });

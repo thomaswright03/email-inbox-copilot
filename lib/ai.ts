@@ -7,6 +7,24 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const MODEL = "gemini-3.5-flash-lite";
 
+// Gmail-derived data may only go to Gemini under Google's *paid* API terms,
+// where Google doesn't use prompts or responses to improve its products (the
+// free tier allows that, which the Google Workspace API User Data Policy
+// forbids for Gmail data). The code can't see the Google Cloud billing
+// console, so the operator attests to it by setting GEMINI_PAID_TIER_PROJECT
+// to the billing-enabled Google Cloud project that owns GEMINI_API_KEY (see
+// docs/compliance-records.md). Without it, nothing is sent to Gemini and the
+// app falls back to the rule-based summary and spam flags in lib/rules.ts.
+export function aiEnabled(): boolean {
+  return Boolean(process.env.GEMINI_API_KEY?.trim()) && Boolean(process.env.GEMINI_PAID_TIER_PROJECT?.trim());
+}
+
+export class AiDisabledError extends Error {
+  constructor() {
+    super("Gemini is disabled: GEMINI_PAID_TIER_PROJECT is not set");
+  }
+}
+
 type GenerateConfig = {
   systemInstruction: string;
   maxOutputTokens: number;
@@ -16,6 +34,7 @@ type GenerateConfig = {
 type Generate = (prompt: string, config: GenerateConfig) => Promise<string | undefined>;
 
 const geminiGenerate: Generate = async (prompt, config) => {
+  if (!aiEnabled()) throw new AiDisabledError();
   const response = await ai.models.generateContent({ model: MODEL, contents: prompt, config });
   return response.text;
 };

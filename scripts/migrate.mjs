@@ -66,6 +66,11 @@ const grants = [
   `GRANT SELECT, INSERT, UPDATE, DELETE ON response_cache TO ${appRole}`,
   `GRANT SELECT, INSERT, UPDATE, DELETE ON rate_limit TO ${appRole}`,
   `GRANT SELECT, INSERT, UPDATE ON user_sessions TO ${appRole}`,
+  `GRANT EXECUTE ON FUNCTION purge_user_sessions() TO ${appRole}`,
+  // Consent evidence: append-only for the app, purged only after 3 years.
+  `GRANT INSERT ON consent_records TO ${appRole}`,
+  `GRANT USAGE ON SEQUENCE consent_records_id_seq TO ${appRole}`,
+  `GRANT EXECUTE ON FUNCTION purge_consent_records() TO ${appRole}`,
 ];
 for (const g of grants) await sql.query(g);
 console.log(`granted least-privilege DML to ${appRole}`);

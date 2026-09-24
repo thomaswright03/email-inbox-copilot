@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchTodaysMessages } from "@/lib/gmail";
-import { summarizeToday } from "@/lib/ai";
+import { aiEnabled, summarizeToday } from "@/lib/ai";
+import { ruleBasedSummary } from "@/lib/rules";
 import { getOrSetCached, userCacheKey } from "@/lib/response-cache";
 import { RouteError } from "@/lib/route-error";
 import { jsonError, rateLimitedResponse, requireSession } from "@/lib/api";
@@ -18,10 +19,16 @@ async function buildTodayPayload(accessToken: string, userId: string) {
     throw new RouteError("Couldn't reach Gmail right now. Try again in a moment.", 502);
   }
 
+  // Without the paid Gemini tier nothing is sent to Gemini (lib/ai.ts).
+  const aiGenerated = aiEnabled() && emails.length > 0;
   let summary: string;
   try {
-    if (emails.length > 0) await enforceAiBudget(userId);
-    summary = await summarizeToday(emails);
+    if (aiGenerated) {
+      await enforceAiBudget(userId);
+      summary = await summarizeToday(emails);
+    } else {
+      summary = ruleBasedSummary(emails);
+    }
   } catch (err) {
     if (err instanceof RateLimitError) throw err;
     logError("today.gemini", err);
@@ -31,6 +38,7 @@ async function buildTodayPayload(accessToken: string, userId: string) {
 
   return {
     summary,
+    aiGenerated,
     count: emails.length,
     emails: emails.map((e) => ({
       id: e.id,

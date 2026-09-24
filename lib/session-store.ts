@@ -13,11 +13,18 @@ import { logError } from "./log";
 export async function currentSessionVersion(googleId: string): Promise<number | null> {
   const sql = getSql();
   if (!sql) return null;
+  // A new row starts at the current Unix time rather than 1, so a row that
+  // was purged and later recreated never reissues a version an old cookie
+  // could still carry.
   const rows = await sql`
-    INSERT INTO user_sessions (google_id) VALUES (${googleId})
-    ON CONFLICT (google_id) DO UPDATE SET google_id = EXCLUDED.google_id
+    INSERT INTO user_sessions (google_id, version) VALUES (${googleId}, floor(extract(epoch from now()))::integer)
+    ON CONFLICT (google_id) DO UPDATE SET updated_at = now()
     RETURNING version
   `;
+  // Rows expire 30 days after the last sign-in (migrations/002).
+  if (Math.random() < 0.05) {
+    await sql`SELECT purge_user_sessions()`.catch((err) => logError("session-store.purge", err));
+  }
   return Number((rows[0] as { version: number }).version);
 }
 
@@ -43,7 +50,7 @@ export async function revokeUserSessions(googleId: string): Promise<void> {
   if (!sql) return;
   try {
     await sql`
-      INSERT INTO user_sessions (google_id, version) VALUES (${googleId}, 2)
+      INSERT INTO user_sessions (google_id, version) VALUES (${googleId}, floor(extract(epoch from now()))::integer + 1)
       ON CONFLICT (google_id) DO UPDATE SET version = user_sessions.version + 1, updated_at = now()
     `;
   } catch (err) {

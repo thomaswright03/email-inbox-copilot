@@ -21,7 +21,7 @@ if (!url) {
 }
 const sql = neon(url);
 const rows = await sql.query(
-  "INSERT INTO user_sessions (google_id, version) VALUES ($1, 2) ON CONFLICT (google_id) DO UPDATE SET version = user_sessions.version + 1, updated_at = now() RETURNING version",
+  "INSERT INTO user_sessions (google_id, version) VALUES ($1, floor(extract(epoch from now()))::integer + 1) ON CONFLICT (google_id) DO UPDATE SET version = user_sessions.version + 1, updated_at = now() RETURNING version",
   [googleId]
 );
 console.log(`sessions for ${googleId} revoked (now at version ${rows[0].version})`);

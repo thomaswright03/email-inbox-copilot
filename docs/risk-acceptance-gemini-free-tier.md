@@ -4,7 +4,17 @@
 **Operating entity:** Wright AI Solutions LLC
 **Date:** 2026-09-23
 **Prepared by:** Thomas Wright
-**Status:** ACCEPTED, pending signature below
+**Status:** SUPERSEDED on 2026-09-24, never signed. See the note below.
+
+> **Superseded.** This memo (and its PDF copy) is no longer the basis for anything. The Google Workspace API
+> User Data and Developer Policy forbids using Gmail data to train or improve AI models,
+> and the Gemini free tier lets Google do exactly that, so no risk acceptance can cover
+> it. Since 2026-09-24 the app sends nothing to Gemini unless
+> `GEMINI_PAID_TIER_PROJECT` attests a billing-enabled (paid) project (`lib/ai.ts`
+> `aiEnabled`); otherwise it uses rule-based results (`lib/rules.ts`). Customer scope
+> (no privileged, medical or financial-account mailboxes) now lives in the Terms of
+> Service section 1 and the Privacy Policy section 1. The paid-tier record and signature
+> belong in `docs/compliance-records.md`. The original text is kept below for the record.
 
 ## 1. The risk being accepted
 

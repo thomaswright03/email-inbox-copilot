@@ -4,7 +4,7 @@ A daily email summary + spam flashcards front end, built on Gmail (works from an
 
 ## What it does
 
-- **Today's Summary tab** — pulls every message from the last 24 hours and asks Gemini for a short, skimmable summary of what actually matters.
+- **Today's Summary tab** — pulls every message from the last 24 hours and asks Gemini for a short, skimmable summary of what actually matters (or, with AI features off, lists the messages to check and the likely bulk mail using simple rules).
 - **Spam Flashcards tab** — flags inbox messages (not already in Junk/Spam) that look promotional or spammy, shown as cards with sender + subject. Each card has **Delete**, **Unsubscribe** (uses the message's `List-Unsubscribe` header when present), and **Ignore**.
 
 ## Setup
@@ -29,8 +29,9 @@ Fill in:
 
 - `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` — from step 1.
 - `AUTH_SECRET` — generate with `npx auth secret`.
-- `ALLOWED_EMAILS` — optional allowlist of Google accounts (addresses and/or `@domain`s) allowed to sign in. Set it for any private deployment.
-- `GEMINI_API_KEY` — free-tier key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+- `ALLOWED_EMAILS` — allowlist of Google accounts (addresses and/or `@domain`s) allowed to sign in. Required in production, where an empty list lets nobody in.
+- `GEMINI_API_KEY` — a key from a **billing-enabled** Google Cloud project (Gemini paid tier). Never use a free-tier key: Google may use free-tier content to improve its products, which Gmail data must not be used for.
+- `GEMINI_PAID_TIER_PROJECT` — the id of that paid project. AI features stay off (rule-based summary and spam list, nothing sent to Gemini) until it is set. Record the switch in `docs/compliance-records.md`.
 - `DATABASE_URL` — optional. Powers the audit log, the shared encrypted cache, shared rate limits and session revocation. Create the schema with `npm run db:migrate` (owner connection in `MIGRATION_DATABASE_URL`) and point `DATABASE_URL` at the least-privilege app role; see [`SECURITY.md`](SECURITY.md#database-setup). Without it, those features fall back to memory or no-op; `GET /api/health` (signed in) reports whether it's configured and reachable.
 - `ALERT_WEBHOOK_URL` — optional Slack/Discord-style webhook for security alerts.
 
@@ -56,8 +57,9 @@ All three, plus `npm audit` and a gitleaks secret scan, run in CI (`.github/work
 ## Notes / current scope
 
 - Only Gmail is wired up right now. Outlook/generic IMAP would need a second connector in `lib/` behind the same interface.
-- Spam detection is a heuristic pre-filter (keywords, all-caps subjects, presence of `List-Unsubscribe`) followed by a Gemini pass to cut false positives. It only looks at messages sitting in the inbox, not ones already in Junk.
-- Uses `gemini-3.5-flash-lite`, which is free (500 requests/day) as of writing — check [Google AI Studio pricing](https://ai.google.dev/pricing) if that changes.
+- Spam detection is a heuristic pre-filter (keywords, all-caps subjects, presence of `List-Unsubscribe`) followed by a Gemini pass to cut false positives. With AI features off, the heuristic alone decides. It only looks at messages sitting in the inbox, not ones already in Junk.
+- Uses `gemini-3.5-flash-lite` on the paid tier; see [Gemini API pricing](https://ai.google.dev/pricing). The daily AI budgets (`AI_CALLS_*`) cap spend.
+- Legal and compliance: `content/legal.ts` (Privacy Policy and Terms, versioned by `LEGAL_VERSION`), `docs/compliance-records.md`, `docs/incident-response.md`, and `scripts/user-data.mjs` for access and deletion requests.
 - "Unsubscribe" only works when the sender includes a `List-Unsubscribe` header with an HTTP(S) link (most legitimate marketing senders do; mailto-only or link-less senders will show a disabled button).
 - Access tokens are refreshed automatically in the background (`auth.ts`, `lib/google-auth.ts`); a session stays active as long as you keep using the app, and only expires after 12 hours of inactivity or if you sign out / revoke access.
 - Security controls and the operator checklist are in [`SECURITY.md`](SECURITY.md).

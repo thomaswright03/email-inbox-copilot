@@ -19,12 +19,15 @@ lives in `app/api/*/route.ts` handlers, called by the client component `Dashboar
    `GET /api/emails/spam` in parallel on mount. Both routes call `fetchTodaysMessages`
    (`lib/gmail.ts`), which lists Gmail messages from the last 24h and fetches
    metadata-only (`format: "metadata"`, no message bodies) for each one.
-4. **AI calls.** `lib/ai.ts` calls Gemini (`gemini-3.5-flash-lite`) once per tab load:
-   `summarizeToday` for the digest, `classifySpam` for spam verdicts (only for messages
-   that clear a cheap heuristic pre-filter first, to cut down on model calls). Both API
-   routes cache their response per user+day for 5 minutes (`lib/cache.ts`, in-memory,
-   best-effort — not durable across cold starts) to reduce redundant Gmail/Gemini calls
-   against Gemini's free-tier daily request ceiling.
+4. **AI calls.** Only when `aiEnabled()` (both `GEMINI_API_KEY` and
+   `GEMINI_PAID_TIER_PROJECT` set, i.e. the key is attested to be on Gemini's paid tier),
+   `lib/ai.ts` calls Gemini (`gemini-3.5-flash-lite`): `summarizeToday` for the digest,
+   `classifySpam` for spam verdicts (only for messages that clear a cheap heuristic
+   pre-filter first, to cut down on model calls). Otherwise the routes use the rule-based
+   `lib/rules.ts` and send nothing to Gemini; each response carries `aiGenerated` so the
+   dashboard labels which kind it shows. Both API routes cache their response per
+   user+day for 5 minutes, in memory (`lib/cache.ts`) and encrypted in Postgres
+   (`lib/db-cache.ts`), to reduce redundant Gmail/Gemini calls; sign-out deletes it.
 5. **Actions.** `POST /api/actions` handles Delete/Unsubscribe/Ignore. Unsubscribe fetches
    the sender-controlled `List-Unsubscribe` URL through `lib/safe-fetch.ts`, which blocks
    private/loopback/link-local/cloud-metadata addresses (re-checked on every redirect hop,

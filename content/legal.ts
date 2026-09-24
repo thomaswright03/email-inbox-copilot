@@ -3,91 +3,112 @@
 // whenever the substance of either document changes so users are asked
 // to re-agree.
 
-export const LEGAL_VERSION = "2026-09-23.2";
-export const LEGAL_LAST_UPDATED = "September 23, 2026";
+export const LEGAL_VERSION = "2026-09-24.1";
+export const LEGAL_LAST_UPDATED = "September 24, 2026";
 export const CONTACT_EMAIL = "t@thomasewright.com";
 export const COMPANY_NAME = "Wright AI Solutions LLC";
 
+// Every statement below about what the app stores, for how long, and who
+// receives it is checked against the code: see docs/architecture.md and
+// SECURITY.md. Change them together.
 export const PRIVACY_POLICY = `
 **Last updated:** ${LEGAL_LAST_UPDATED}
 
-This Privacy Policy explains how Inbox Buddy ("Inbox Buddy," "we," "us," or "our"), a product of ${COMPANY_NAME} ("Company"), collects, uses, and discloses information when you use the Inbox Buddy service (the "Service").
+This Privacy Policy explains how Inbox Buddy ("Inbox Buddy," "we," "us," or "our"), a product of ${COMPANY_NAME} ("Company"), collects, uses, stores, and discloses information when you use the Inbox Buddy service (the "Service").
 
 ## 1. Who this policy covers
 
-This policy applies to anyone who connects a Gmail account to Inbox Buddy ("you," "user"). If you use Inbox Buddy on behalf of an organization (for example, a law firm), you confirm you have authority to connect that organization's mailbox and to agree to this policy and our Terms of Service on the organization's behalf. We do not currently have a separate signed data processing agreement for organizational customers; if your organization requires one before connecting a mailbox, contact us first at ${CONTACT_EMAIL}.
+This policy applies to anyone who connects a Gmail account to Inbox Buddy ("you," "user"), and describes what we do with information about the people who email you, which reaches us as part of your messages.
 
-## 2. Information we access
+Inbox Buddy is available only to people in the United States whom we have invited; sign-in is limited to the Google accounts we have approved. It is not intended for mailboxes that carry attorney-client privileged, medical (health), or financial-account correspondence, or other information subject to professional-confidentiality or regulatory duties. Please do not connect such a mailbox. If you connect a mailbox that belongs to an organization, you confirm you have authority to do so and to agree to this policy and our Terms of Service on its behalf. We do not currently offer a signed data processing agreement; if your organization needs one, contact us at ${CONTACT_EMAIL} before connecting.
 
-When you connect your Gmail account, you grant Inbox Buddy the following Google OAuth permissions:
+## 2. What Google lets us access, and what we actually use
 
-- **Read access** to your Gmail messages ("gmail.readonly")
-- **Modify access**, used only to move a message to Trash or remove it from your Inbox when you choose to Delete or Unsubscribe from a sender ("gmail.modify")
+When you sign in, you grant Inbox Buddy these Google permissions:
 
-Specifically, for messages received in roughly the last 24 hours, Inbox Buddy retrieves only message metadata: the sender, subject line, a short preview snippet Gmail itself generates, and the date. We do not request or retrieve full message body content from Gmail at all — only the sender, subject line, and short preview snippet are sent for AI processing (see Section 3).
+- **openid, email, profile:** your Google account id, name, email address and profile picture, used to sign you in.
+- **gmail.modify:** Google describes this permission as letting an app read, compose, send and change your email and labels, everything except permanently deleting messages without going through Trash. It is the narrowest Google permission that lets Inbox Buddy move a message to Trash or out of your Inbox.
 
-We do not access your Gmail account except when you are actively using the Service.
+Although gmail.modify permits more, Inbox Buddy uses it only to:
 
-## 3. How we use your information, and who we share it with
+- list the messages you received in roughly the last 24 hours (up to 50);
+- read each message's metadata: the sender, subject line, date, the sender's published unsubscribe link (the List-Unsubscribe header), which Gmail labels it has, and the short preview snippet Gmail itself generates;
+- move a message to Trash when you click Delete; and
+- remove a message from your Inbox (archive it) when you click Unsubscribe.
 
-We use the information above only to operate the Service:
+Inbox Buddy never retrieves full message bodies or attachments, and never composes, sends, or permanently deletes email. We access your Gmail only while you are using the Service.
 
-- **AI-generated summary and spam detection.** The sender, subject line, and short preview snippet of your recent messages are sent to Google's Gemini API, a third-party AI service operated by Google, to generate your daily summary and to help identify messages that are likely spam. This is the only third party that receives any of your email content.
+## 3. How we use information
 
-  As of the date of this policy, this feature uses Google's standard, no-cost Gemini API tier. Under Google's published terms for that tier, Google may use content submitted through it to improve its own products — this differs from Google's paid tiers, which carry a no-training commitment. We have not entered into a separate data processing agreement with Google for this use. **If your use of Inbox Buddy involves confidential, privileged, or otherwise legally sensitive email, you should not rely on this Service until that changes.** We intend to move to a paid, no-training tier before onboarding any customer whose email carries that kind of sensitivity, but as of this policy's date that change has not yet been made.
+- **Your daily summary and spam flags.** When AI features are on, the sender, subject line, and preview snippet of your recent messages are sent to Google's Gemini API to write your summary and to decide which messages look like spam. When AI features are off, Inbox Buddy instead builds a simple summary and spam list on our own servers using fixed rules (for example, messages with an unsubscribe link or common marketing wording), and nothing is sent to Gemini. The app labels which kind of result you are looking at.
+- **Taking the actions you request.** Delete moves the message to Gmail Trash. Unsubscribe sends a request to the unsubscribe web address the sender published in that message, and then archives the message (removes it from your Inbox; it stays in All Mail). Ignore takes no action on your mailbox.
+- **Security and abuse prevention.** We count requests per account to enforce usage limits, and keep the activity log described in Section 5.
 
-- **Taking the actions you request.** When you click Delete, we ask Gmail to move that message to Trash. When you click Unsubscribe, we send a request to the unsubscribe link the sender itself published in that message's headers — we cannot guarantee the sender actually honors it. Ignore takes no action on your mailbox.
+We do not sell your information, use it for advertising, or use it to train or improve any AI model.
 
-- **Authentication.** Google handles your sign-in; we never see or store your Google password. We receive and use a Google-issued access token, scoped as described above, solely to make the Gmail API calls described in this policy.
+## 4. Who receives information
 
-We do not sell your information. We do not share your email content with any party other than Google, as described above, and we do not use your email content for advertising.
+We use these service providers, each only to run the Service:
 
-## 4. What we store
+| Provider | What it receives | Why |
+|---|---|---|
+| Google (Gmail API) | Your OAuth token and the requests described in Section 2 | Reading metadata and taking the actions you request |
+| Google (Gemini API, paid tier), only when AI features are on | Sender, subject line and preview snippet of your recent messages | Writing your summary and spam flags |
+| Vercel Inc. (hosting) | All requests to the Service, and our server logs (Section 5) | Running the app |
+| Neon Inc. (database) | The stored data listed in Section 5 | Storing it |
+| The sender of a message you unsubscribe from | A request to the unsubscribe address it published | Unsubscribing you; it learns that the request was made |
 
-Inbox Buddy does not currently maintain a database of your email content. Message data is retrieved from Gmail, processed in server memory for the duration of a single request, and discarded — it is not written to disk or retained by us after your summary or spam list is generated.
+**Gemini.** Inbox Buddy sends Gmail data to Gemini only under Google's paid Gemini API terms, under which Google does not use prompts or responses to improve its products. The app is built so that AI features stay off unless the deployment is configured for a paid, billing-enabled Google Cloud project; if they are off, nothing is sent to Gemini (see Section 3).
 
-We do retain, for the duration of your signed-in session:
+We may also send our own operations team automatic security alerts (for example, "rate limit reached"). These contain an event name and never any personal information or email content.
 
-- Your Google account identifier, name, and email address (for display and authentication)
-- Your Google OAuth access token and refresh token (used to make Gmail API calls on your behalf and to keep your session active without repeated sign-ins), stored in an encrypted session cookie
-- The fact that you agreed to this Privacy Policy and our Terms of Service, and the version and date you agreed
+We may disclose information if required by law, or to a successor if the Company's business is transferred, subject to this policy.
 
-We keep a durable log of Delete, Unsubscribe, Ignore, and AI spam-classification events — which account, which action, which message ID, and when — in a separate database used only for this record. That log does not include message content (sender, subject, or snippet), only the fact that an action occurred.
+## 5. What we store, and for how long
 
-## 5. Data retention
+Everything below is held in one database, hosted by Neon in the United States, or in the Service's server logs, hosted by Vercel.
 
-Because we do not independently store your email content, its retention is governed by Gmail's own retention policies, including Gmail's Trash retention period after you delete a message through Inbox Buddy. Your session data (Section 4) is retained only for the life of your signed-in session. Your underlying Google access token is refreshed automatically in the background using a securely stored refresh token, so an active session does not interrupt you with repeated sign-ins; a session you stop using is ended automatically after 30 days of inactivity, or immediately if you sign out or revoke access from your Google Account. Audit log entries (Section 4) are retained for as long as your account is active, so we can reconstruct account activity if needed.
+| Data | Where | Kept for |
+|---|---|---|
+| Your recent messages' sender, subject, preview snippet and date, and your summary or spam list | Database cache, encrypted (AES-256-GCM) | 5 minutes, so reloading the page doesn't re-read your mailbox; deleted immediately when you sign out |
+| Your Google account id, name, email address, profile picture link, and Google access and refresh tokens | An encrypted cookie in your browser, not our database | Until you sign out, or 12 hours after you last used the Service |
+| Your Google account id and a session number | Database (sessions table) | 30 days after your last sign-in; it lets us end all your sessions at once |
+| Record of your agreement: Google account id, the version of these documents you agreed to, and when | Database (consent records) | 3 years from when you agreed, so we can show what you agreed to |
+| Activity log: Google account id, the event, the Gmail message id where there is one, a fixed description, and the time. Events: sign-in, rejected sign-in attempt (including by people who are not users), sign-out, agreement to these documents, failed token refresh, session rejected, usage limit reached, message flagged as spam, Delete, Unsubscribe, Ignore | Database (activity log) | 90 days |
+| Usage counters: your Google account id and a count per time window | Database (rate limits) | 2 days |
+| Server logs: Google account id, event names, error messages with credentials removed, and the activity-log events above | Vercel logs | The runtime-log retention of our Vercel plan |
+
+None of the stored data, the activity log included, contains the content of your messages outside the 5-minute encrypted cache.
+
+Messages you Delete stay in Gmail Trash under Gmail's own rules. We do not control or keep copies of your mailbox.
 
 ## 6. Your choices and rights
 
-You can disconnect Inbox Buddy at any time from your [Google Account permissions page](https://myaccount.google.com/permissions) — this immediately invalidates our access token and stops all access to your mailbox.
+- **Disconnect.** Signing out revokes our Google access token, ends your sessions everywhere, and deletes your cached data. You can also remove Inbox Buddy at any time from your [Google Account permissions page](https://myaccount.google.com/permissions).
+- **Get a copy, or have it deleted.** Email ${CONTACT_EMAIL} from the address you use with Inbox Buddy to ask for a copy of the data we hold about you (Section 5) or for it to be deleted. We will confirm the request comes from you, and answer within 30 days. Deletion removes your rows from every table listed in Section 5; server logs expire on their own schedule.
+- **If someone who uses Inbox Buddy has emailed you**, and you want to ask about information from your message, contact us at the same address.
 
-To ask a question, request information about what we've processed, or raise a concern, contact us at ${CONTACT_EMAIL}. We will respond within 30 days.
+## 7. Age
 
-## 7. Children's privacy
-
-Inbox Buddy is not directed to, and is not knowingly used by, children under 18.
+Inbox Buddy is not intended for anyone under 18, and you must confirm you are 18 or older before using it.
 
 ## 8. Security
 
-We use industry-standard practices including encrypted connections (HTTPS), OAuth-based authentication, and encrypted session storage. We have not yet completed a dedicated third-party security audit of this Service.
+We use encrypted connections (HTTPS), Google sign-in (we never see your Google password), encrypted session cookies, encrypted cached data, and a database account that cannot read the activity or consent records. We have not yet completed an independent security audit of the Service. If a security incident affects your information, we will notify you as required by law.
 
-## 9. Third-party services
+## 9. Google API data
 
-Your use of Inbox Buddy also involves Google's Gmail API and Gemini API, each governed by Google's own terms and privacy policy:
+Inbox Buddy's use and transfer of information received from Google APIs adheres to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including its Limited Use requirements. In particular, Gmail data is used only to provide the features described above, is not used for advertising, is not sold, is not read by people except with your permission or where required for security or by law, and is not used to train AI models.
 
-- Google Privacy Policy: https://policies.google.com/privacy
-- Google API Services User Data Policy: https://developers.google.com/terms/api-services-user-data-policy
+Google's own processing is governed by the [Google Privacy Policy](https://policies.google.com/privacy).
 
-Inbox Buddy's use and transfer of information received from Google APIs adheres to the Google API Services User Data Policy, including its Limited Use requirements.
+## 10. Where data is processed
 
-## 10. International data transfers
-
-Inbox Buddy is hosted in the United States (via Vercel), and Google's infrastructure may process data in the United States or other countries where Google operates. By using the Service, you consent to this transfer and processing.
+Inbox Buddy and its database are hosted in the United States. Google may process data sent to the Gmail and Gemini APIs in the United States or other countries where it operates.
 
 ## 11. Changes to this policy
 
-We may update this Privacy Policy from time to time. If we make a material change, we will update the "Last updated" date above and, where required, ask you to re-agree before continuing to use the Service.
+If we make a material change, we will update the "Last updated" date above and ask you to agree again before you continue to use the Service.
 
 ## 12. Contact us
 
@@ -99,30 +120,32 @@ export const TERMS_OF_SERVICE = `
 
 These Terms of Service ("Terms") govern your access to and use of Inbox Buddy (the "Service"), provided by ${COMPANY_NAME} ("Company," "we," "us"). By connecting your Gmail account and using the Service, you agree to these Terms and to our Privacy Policy. If you do not agree, do not use the Service.
 
-## 1. Eligibility and authority
+## 1. Who can use Inbox Buddy
 
-You must be at least 18 years old to use the Service. If you connect a Gmail account that is not your own, or that belongs to an organization, you confirm that you are authorized to do so and to grant Inbox Buddy the access described in our Privacy Policy.
+You must be at least 18 years old and located in the United States, and you must have been invited by us: only Google accounts we have approved can sign in. If you connect a Gmail account that is not your own, or that belongs to an organization, you confirm that you are authorized to do so and to grant Inbox Buddy the access described in our Privacy Policy.
+
+Inbox Buddy is not intended for mailboxes that carry attorney-client privileged, medical (health), or financial-account correspondence, or other information subject to professional-confidentiality or regulatory duties, and you agree not to connect such a mailbox.
 
 ## 2. What the Service does
 
 Inbox Buddy connects to your Gmail account and:
 
-- Generates an AI-written summary of recent messages
+- Generates a summary of recent messages, written by AI when AI features are on, or built from simple rules when they are off
 - Identifies inbox messages that are likely spam and displays them as cards
-- Lets you Delete a message (moves it to Gmail Trash), attempt to Unsubscribe from a sender (using that sender's own published unsubscribe link), or Ignore a card (no action taken)
+- Lets you Delete a message (moves it to Gmail Trash), Unsubscribe from a sender (sends a request to that sender's own published unsubscribe address, then archives the message), or Ignore a card (no action taken)
 
 ## 3. AI-generated content — important disclaimer
 
-Summaries and spam classifications are generated automatically by a third-party AI model (see our Privacy Policy) and **may be incomplete, inaccurate, miscategorized, or may omit information — including time-sensitive, urgent, or important messages.**
+Summaries and spam classifications are generated automatically, by a third-party AI model or by simple rules (see our Privacy Policy), and **may be incomplete, inaccurate, miscategorized, or may omit information — including time-sensitive, urgent, or important messages.**
 
-**You are solely responsible for reviewing your own inbox for anything time-sensitive, urgent, legally significant, or otherwise important. Do not rely on Inbox Buddy's summary as your only source of information about your email.** This is especially important if you use Inbox Buddy in a professional context — for example, legal, medical, or financial work — where missing a communication could have serious consequences.
+**You are solely responsible for reviewing your own inbox for anything time-sensitive, urgent, legally significant, or otherwise important. Do not rely on Inbox Buddy's summary as your only source of information about your email.** This is especially important if you use Inbox Buddy for work, where missing a communication could have serious consequences.
 
 ## 4. Actions you authorize
 
 By clicking Delete or Unsubscribe, you are directly instructing us to take that action on your Gmail account through Google's API, on your behalf, immediately:
 
 - **Delete** moves the message to your Gmail Trash. It is not permanently destroyed at that moment (Gmail's own Trash retention applies), but Inbox Buddy does not provide an "undo" within the app itself.
-- **Unsubscribe** sends a request to the link the sender published in their message. We do not control, and cannot guarantee, whether the sender actually stops emailing you.
+- **Unsubscribe** sends a request to the unsubscribe address the sender published in their message, and then archives that message (removes it from your Inbox; it stays in All Mail). We do not control, and cannot guarantee, whether the sender actually stops emailing you, and the request cannot be undone.
 
 Only click these buttons for messages and senders you intend to act on.
 
@@ -142,7 +165,7 @@ Your Google account and the emails in it remain governed by Google's own terms. 
 
 ## 7. No professional advice
 
-Inbox Buddy is a productivity tool. It does not provide legal, medical, financial, or other professional advice, and nothing it generates should be treated as such. If you use Inbox Buddy in a professional or regulated context — including the practice of law — you remain solely responsible for complying with any professional conduct, confidentiality, or ethical obligations that apply to you, including obligations regarding the use of AI tools and third-party services with client or case information. Inbox Buddy does not evaluate or certify compliance with any such obligations.
+Inbox Buddy is a productivity tool. It does not provide legal, medical, financial, or other professional advice, and nothing it generates should be treated as such. Inbox Buddy is not designed for, and does not evaluate or certify compliance with, the professional-conduct, confidentiality, or ethical obligations that apply to regulated professions (Section 1). If you use it for work, you remain solely responsible for any such obligations that apply to you.
 
 ## 8. Disclaimer of warranties
 
@@ -162,7 +185,7 @@ You may stop using the Service at any time by revoking Google's access. We may s
 
 ## 12. Changes to these Terms
 
-We may update these Terms from time to time. If we make a material change, we will update the "Last updated" date above and, where required, ask you to re-agree before continuing to use the Service.
+We may update these Terms from time to time. If we make a material change, we will update the "Last updated" date above and ask you to agree again before you continue to use the Service.
 
 ## 13. Governing law and disputes
 

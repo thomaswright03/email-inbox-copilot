@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchTodaysMessages } from "@/lib/gmail";
-import { classifySpam, spamCandidates } from "@/lib/ai";
+import { aiEnabled, classifySpam, spamCandidates } from "@/lib/ai";
+import { ruleBasedSpamVerdicts } from "@/lib/rules";
 import { logAuditEvent } from "@/lib/audit";
 import { getOrSetCached, userCacheKey } from "@/lib/response-cache";
 import { RouteError } from "@/lib/route-error";
@@ -19,10 +20,16 @@ async function buildSpamPayload(accessToken: string, userId: string) {
     throw new RouteError("Couldn't reach Gmail right now. Try again in a moment.", 502);
   }
 
+  // Without the paid Gemini tier nothing is sent to Gemini (lib/ai.ts).
+  const aiGenerated = aiEnabled();
   let verdicts;
   try {
-    await enforceAiBudget(userId, spamCandidates(emails).length);
-    verdicts = await classifySpam(emails);
+    if (aiGenerated) {
+      await enforceAiBudget(userId, spamCandidates(emails).length);
+      verdicts = await classifySpam(emails);
+    } else {
+      verdicts = ruleBasedSpamVerdicts(emails);
+    }
   } catch (err) {
     if (err instanceof RateLimitError) throw err;
     logError("spam.gemini", err);
@@ -52,7 +59,7 @@ async function buildSpamPayload(accessToken: string, userId: string) {
     )
   );
 
-  return { flashcards };
+  return { flashcards, aiGenerated };
 }
 
 export async function GET(req: Request) {

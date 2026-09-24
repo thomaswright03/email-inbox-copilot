@@ -23,6 +23,7 @@ import {
 
 type TodayResponse = {
   summary: string;
+  aiGenerated: boolean;
   count: number;
   emails: { id: string; from: string; subject: string; snippet: string; date: string }[];
 };
@@ -40,7 +41,7 @@ type Tab = "summary" | "spam";
 
 const ACTION_LABEL: Record<"delete" | "unsubscribe" | "ignore", string> = {
   delete: "Deleted",
-  unsubscribe: "Unsubscribed",
+  unsubscribe: "Unsubscribed and archived",
   ignore: "Ignored",
 };
 
@@ -117,6 +118,7 @@ export default function Dashboard({ userName }: { userName: string }) {
   const [tab, setTabState] = useState<Tab>(initialTab);
   const [today, setToday] = useState<TodayResponse | null>(null);
   const [spamCards, setSpamCards] = useState<SpamCard[] | null>(null);
+  const [spamAiGenerated, setSpamAiGenerated] = useState(false);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [loadingSpam, setLoadingSpam] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -160,6 +162,7 @@ export default function Dashboard({ userName }: { userName: string }) {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error ?? "Couldn't check for spam");
         setSpamCards(data.flashcards);
+        setSpamAiGenerated(Boolean(data.aiGenerated));
       })
       .catch((err: Error) => setSpamError(err.message))
       .finally(() => setLoadingSpam(false));
@@ -344,6 +347,13 @@ export default function Dashboard({ userName }: { userName: string }) {
                 )}
               </div>
             )}
+            {!loadingSummary && !summaryError && today && (
+              <p className="mt-2 text-xs text-muted">
+                {today.aiGenerated
+                  ? "AI-generated summary. It can miss or misstate things, so check your inbox for anything important."
+                  : "Rule-based list (AI summaries are off). Check your inbox for anything important."}
+              </p>
+            )}
           </div>
         )}
 
@@ -354,6 +364,14 @@ export default function Dashboard({ userName }: { userName: string }) {
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} />
                 {actionError}
               </div>
+            )}
+
+            {!loadingSpam && !spamError && (
+              <p className="mb-3 text-xs text-muted">
+                {spamAiGenerated
+                  ? "Flagged by AI. These are suggestions and can be wrong, so check each one before you act."
+                  : "Flagged by simple rules (AI is off). These are suggestions and can be wrong, so check each one before you act."}
+              </p>
             )}
 
             {spamError ? (
@@ -405,6 +423,7 @@ export default function Dashboard({ userName }: { userName: string }) {
                         </button>
                         <button
                           onClick={() => handleAction("unsubscribe", card.id)}
+                          title="Asks the sender to unsubscribe you, then archives this message"
                           disabled={!card.hasUnsubscribe || isPending}
                           className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent-soft px-2.5 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:bg-surface-hover disabled:text-muted disabled:hover:bg-surface-hover disabled:hover:text-muted disabled:opacity-60"
                         >

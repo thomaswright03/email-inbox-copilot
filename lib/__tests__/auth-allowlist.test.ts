@@ -6,9 +6,15 @@ vi.mock("next-auth/providers/google", () => ({ default: () => ({}) }));
 import { isEmailAllowed } from "@/auth";
 
 describe("isEmailAllowed", () => {
-  it("allows everyone when no allowlist is configured", () => {
-    expect(isEmailAllowed("anyone@example.com", "")).toBe(true);
-    expect(isEmailAllowed("anyone@example.com", undefined)).toBe(true);
+  it("allows everyone outside production when no allowlist is configured", () => {
+    expect(isEmailAllowed("anyone@example.com", "", false)).toBe(true);
+    expect(isEmailAllowed("anyone@example.com", undefined, false)).toBe(true);
+  });
+
+  it("lets nobody in on a production deployment with no allowlist", () => {
+    expect(isEmailAllowed("anyone@example.com", "", true)).toBe(false);
+    expect(isEmailAllowed("anyone@example.com", "  ", true)).toBe(false);
+    expect(isEmailAllowed("owner@example.com", "owner@example.com", true)).toBe(true);
   });
 
   it("matches exact addresses case-insensitively", () => {
