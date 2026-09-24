@@ -32,12 +32,15 @@ No real email is used, and none may be added, because the eval sends it to Gemin
 | Spam accuracy | 85% | 65% |
 | Spam precision (flags that really are spam) | 85% | 85% |
 | Spam recall (spam that gets flagged) | 75% | 50% |
-| Reason accuracy (right reason on caught spam) | 70% | 40% |
+| Reason accuracy (right reason on caught spam) | 70% | 80% |
 | Summary coverage (must-mention items found) | 80% | n/a |
 | Summary forbidden text | none | n/a |
 
 The rule floor sits just under its measured baseline (2026-09-24: accuracy 68.4%,
-precision 92.9%, recall 54.2%, reason 46.2%). The model thresholds are the targets the
+precision 92.9%, recall 54.2%, reason 100%; the reason was 46.2% before the rules chose
+"marketing" for promotional wording and "newsletter" only for digest-like mail, so its
+floor is 80%). The golden set was used to write those reason rules, so
+`lib/__tests__/rules.test.ts` also checks them on separate examples. The model thresholds are the targets the
 product needs; record the first real run's scores here, and raise a threshold when the
 model clears it comfortably.
 

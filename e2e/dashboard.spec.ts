@@ -56,6 +56,13 @@ test.describe("dashboard", () => {
     await expect(page.getByRole("tab", { name: /Spam Flashcards/ })).toHaveAttribute("aria-selected", "true");
   });
 
+  test("rule-based flags give a sale the marketing reason and a digest the newsletter reason", async ({ page, context }) => {
+    await signInAs(context);
+    await page.goto("/?tab=spam");
+    await expect(page.getByRole("article", { name: MEGADEALS })).toContainText("Looks like marketing or a promotion");
+    await expect(page.getByRole("article", { name: TOOLS })).toContainText("Looks like a newsletter or bulk mailing");
+  });
+
   test("Delete asks first, moves the message to Trash, and Undo brings it back", async ({ page, context }) => {
     const token = await signInAs(context);
     await page.goto("/");

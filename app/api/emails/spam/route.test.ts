@@ -170,7 +170,8 @@ describe("GET /api/emails/spam", () => {
     expect(classifyCandidates).not.toHaveBeenCalled();
     expect(body.aiStatus).toBe("off");
     expect(body.flashcards).toHaveLength(1);
-    expect(body.flashcards[0]).toMatchObject({ id: "m1", reason: "newsletter" });
+    // A sale is labelled marketing even though it has an unsubscribe header.
+    expect(body.flashcards[0]).toMatchObject({ id: "m1", reason: "marketing" });
   });
 
   it("checks every candidate with AI across loads: 20 per load, the rest on the next one, each only once", async () => {

@@ -21,13 +21,15 @@ export const MODEL_THRESHOLDS = {
 } as const;
 
 // Measured on 2026-09-24: accuracy 68.4%, precision 92.9%, recall 54.2%,
-// reason 46.2%. The rules are cautious (few false flags) but miss cold
-// outreach and most phishing; the floor sits just under that baseline.
+// reason 100% (46.2% before the reason rules looked at promotional and
+// digest wording). The rules are cautious (few false flags) but miss cold
+// outreach and most phishing; the floor sits just under that baseline, and
+// the reason floor well above the old 46%.
 export const RULES_THRESHOLDS = {
   spamAccuracy: 0.65,
   spamPrecision: 0.85,
   spamRecall: 0.5,
-  reasonAccuracy: 0.4,
+  reasonAccuracy: 0.8,
 } as const;
 
 export function toParsedEmail(c: { id?: string; from: string; subject: string; snippet: string; listUnsubscribe?: string }, id = c.id ?? "e1"): ParsedEmail {
