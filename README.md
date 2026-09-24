@@ -4,12 +4,20 @@ A daily email summary + spam flashcards front end, built on Gmail (works from an
 
 ## What it does
 
-- **Today's Summary tab** — reads the messages from the last 24 hours (up to the newest 100, and it says so when there were more) and asks Gemini for a short, skimmable summary of what actually matters. With AI features off, or when Gemini fails, it lists the messages to check and the likely bulk mail using simple rules instead. It shows when it was last updated, has a Refresh button, and links every message to Gmail.
+- **Today's Summary tab** — reads the mail you received in the last 24 hours (up to the newest 100, and it says so when there were more; see [Which mail counts](#which-mail-counts)) and asks Gemini for a short, skimmable summary of what actually matters. With AI features off, or when Gemini fails, it lists the messages to check and the likely bulk mail using simple rules instead. It shows when it was last updated, has a Refresh button, and links every message to Gmail.
 - **Spam Flashcards tab** — flags inbox messages (not already in Junk/Spam) that look promotional or spammy, shown as cards with sender, subject, the reason, and an Open in Gmail link. Each card has:
   - **Delete** — asks first, moves the message to Gmail Trash, and can be undone from the toast.
   - **Unsubscribe** — for senders that support RFC 8058 one-click unsubscribe, the server sends the one-click POST and archives the message; only a 2xx answer counts as unsubscribed. Senders with only a web link get **Open unsubscribe page** (you confirm on their page), and mailto-only senders get **Email to unsubscribe** (a prefilled Gmail draft).
   - **Not spam** — the message is never flagged again for you (stored per user), and can be undone.
 - English, Spanish and French; light, dark or system theme.
+
+### Which mail counts
+
+The summary, its message count and the spam list cover mail you **received** in the last 24 hours (a rolling window, not since midnight):
+
+- Left out: mail you sent (including notes to yourself), drafts, Google Chat messages, and anything in Spam or Trash. The Gmail query is `newer_than:1d -in:sent -in:drafts -in:chats`, and messages labelled `SENT`, `DRAFT` or `CHAT` are also dropped after they are read (`lib/gmail.ts`).
+- Kept: received mail you have already archived, or that a Gmail filter skipped the inbox for. It still arrived that day, so it belongs in the day's digest.
+- The spam list only ever flags messages that are still in the inbox.
 
 ## Setup
 

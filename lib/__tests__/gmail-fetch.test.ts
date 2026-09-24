@@ -65,7 +65,9 @@ describe("fetchRecentMessages", () => {
     api.list.mockResolvedValue({ data: { messages: ids("m", 2), resultSizeEstimate: 2 } });
     const result = await fetchRecentMessages("tok");
 
-    expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ userId: "me", q: "newer_than:1d" }));
+    expect(api.list).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "me", q: "newer_than:1d -in:sent -in:drafts -in:chats" })
+    );
     for (const [args] of api.get.mock.calls) {
       expect(args.format).toBe("metadata");
       expect(args.metadataHeaders).toContain("List-Unsubscribe-Post");
@@ -73,6 +75,38 @@ describe("fetchRecentMessages", () => {
     expect(result).toMatchObject({ truncated: false, totalEstimate: 2 });
     expect(result.emails.map((e) => e.id)).toEqual(["m0", "m1"]);
     expect(result.emails[0]).toMatchObject({ threadId: "t-m0", from: "Sender m0 <m0@example.com>", isInInbox: true });
+  });
+
+  it("covers received mail only: Sent, Drafts and Chats never reach the summary, the rule groups or the count", async () => {
+    // Even if the list returned them anyway, messages the user wrote are
+    // dropped by their labels. A note to self (SENT + INBOX) is also left out.
+    api.list.mockResolvedValue({ data: { messages: ids("m", 5), resultSizeEstimate: 5 } });
+    const labels: Record<string, string[]> = {
+      m0: ["INBOX", "UNREAD"],
+      m1: ["SENT"],
+      m2: ["DRAFT"],
+      m3: ["CHAT"],
+      m4: ["SENT", "INBOX"],
+    };
+    api.get.mockImplementation(async ({ id }: { id: string }) => metadata(id, { labels: labels[id] }));
+
+    const result = await fetchRecentMessages("tok");
+
+    expect(api.list.mock.calls[0][0].q).toMatch(/-in:sent/);
+    expect(api.list.mock.calls[0][0].q).toMatch(/-in:drafts/);
+    expect(result.emails.map((e) => e.id)).toEqual(["m0"]);
+
+    const { ruleBasedGroups } = await import("../rules");
+    const groups = ruleBasedGroups(result.emails);
+    expect([...groups.toCheck, ...groups.bulk]).toEqual(["m0"]);
+  });
+
+  it("keeps received mail the user already archived (no INBOX label)", async () => {
+    api.list.mockResolvedValue({ data: { messages: ids("m", 1), resultSizeEstimate: 1 } });
+    api.get.mockImplementation(async ({ id }: { id: string }) => metadata(id, { labels: ["CATEGORY_UPDATES"] }));
+    const result = await fetchRecentMessages("tok");
+    expect(result.emails).toHaveLength(1);
+    expect(result.emails[0].isInInbox).toBe(false);
   });
 
   it("follows nextPageToken until every message in the window is read", async () => {

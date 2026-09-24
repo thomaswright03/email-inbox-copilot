@@ -81,4 +81,17 @@ describe("one dashboard load", () => {
     expect(res.status).toBe(403);
     expect(await res.json()).toMatchObject({ ok: false, code: "gmail_reconnect" });
   });
+
+  it("leaves the user's own sent mail out of the summary, its count and the rule groups", async () => {
+    api.list.mockResolvedValue({ data: { messages: [{ id: "m1" }, { id: "s1" }], resultSizeEstimate: 2 } });
+    api.get.mockImplementation(async ({ id }: { id: string }) => {
+      if (id === "m1") return message("m1", "Lunch on Friday?");
+      const sent = message("s1", "RE: Lunch on Friday?");
+      return { data: { ...sent.data, labelIds: ["SENT"] } };
+    });
+    const body = await (await getToday(new Request("http://localhost/api/emails/today"))).json();
+    expect(body.count).toBe(1);
+    expect(body.emails.map((e: { id: string }) => e.id)).toEqual(["m1"]);
+    expect(body.groups).toEqual({ toCheck: ["m1"], bulk: [] });
+  });
 });

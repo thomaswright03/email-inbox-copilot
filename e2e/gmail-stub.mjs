@@ -46,6 +46,16 @@ function fixture() {
         "List-Unsubscribe": "<mailto:leave@toolsweekly.example?subject=unsubscribe>",
       },
     },
+    // The user's own reply: the app must leave it out of the summary and
+    // its count (lib/gmail.ts isReceived), even though this stand-in
+    // ignores the search query and returns it.
+    {
+      id: "m4",
+      threadId: "t1",
+      labelIds: ["SENT"],
+      snippet: "Sure, I'll send comments by Thursday.",
+      headers: { From: "Tester <tester@example.com>", Subject: "RE: Contract review before Friday", Date: date(10) },
+    },
   ];
 }
 
