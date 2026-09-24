@@ -7,7 +7,7 @@ vi.mock("../google-auth", () => ({ refreshGoogleAccessToken: vi.fn() }));
 
 import { checkSessionVersion } from "../session-store";
 import { refreshGoogleAccessToken } from "../google-auth";
-import { getGoogleSession } from "../session";
+import { getGoogleSession, readGoogleSession } from "../session";
 import { SESSION_COOKIE_NAME } from "../session-cookie";
 import { LEGAL_VERSION } from "@/content/legal";
 
@@ -57,7 +57,16 @@ describe("getGoogleSession", () => {
 
   it("refuses a cookie from before a sign-out or revocation", async () => {
     vi.mocked(checkSessionVersion).mockResolvedValue("revoked");
-    expect(await getGoogleSession(await cookieHeaders({ ...BASE, expiresAt: inAnHour() }))).toBeNull();
+    expect(await readGoogleSession(await cookieHeaders({ ...BASE, expiresAt: inAnHour() }))).toEqual({ session: null, problem: null });
+  });
+
+  it("reports a cookie refused because the session store can't be read", async () => {
+    vi.mocked(checkSessionVersion).mockResolvedValue("unavailable");
+    expect(await readGoogleSession(await cookieHeaders({ ...BASE, expiresAt: inAnHour() }))).toEqual({
+      session: null,
+      problem: "store_unavailable",
+    });
+    expect(await readGoogleSession(new Headers())).toEqual({ session: null, problem: null });
   });
 
   it("refreshes an expired access token without writing anything back", async () => {

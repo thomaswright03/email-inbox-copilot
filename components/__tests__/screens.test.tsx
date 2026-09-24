@@ -77,6 +77,12 @@ describe("SignIn", () => {
     fireEvent.click(screen.getByRole("button", { name: /Continue with Google/ }));
     expect(signIn).toHaveBeenCalledWith("google");
     expect(screen.getByRole("link", { name: "Privacy Policy" }).getAttribute("href")).toBe("/privacy");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("says why when a Google sign-in couldn't start a session", () => {
+    renderWithProviders(<SignIn storeUnavailable />);
+    expect(screen.getByRole("alert").textContent).toMatch(/couldn't start your session/);
   });
 });
 

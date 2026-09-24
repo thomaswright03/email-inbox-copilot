@@ -15,6 +15,8 @@ export const en = {
   "signin.tagline":
     "Connect Gmail for a daily summary of your recent mail, and a spam tab that helps flag promotional messages your junk folder may have missed.",
   "signin.continue": "Continue with Google",
+  "signin.storeUnavailable":
+    "You signed in with Google, but Inbox Buddy couldn't start your session because it can't reach its database. Try again in a moment. If this keeps happening, contact {email}.",
   "signin.agreePrefix": "By continuing, you agree to our",
   "signin.and": "and",
   "legal.terms": "Terms of Service",
