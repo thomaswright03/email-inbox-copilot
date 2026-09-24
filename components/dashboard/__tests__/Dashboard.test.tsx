@@ -103,9 +103,9 @@ function actionCalls(): { action: string; messageId: string }[] {
     .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
 }
 
-function renderDashboard() {
+function renderDashboard({ aiOn = true }: { aiOn?: boolean } = {}) {
   return renderWithProviders(
-    <Dashboard userName="Thomas" userEmail="t@example.com" accountId="gid-1" dataRequestCode="code-1" />
+    <Dashboard userName="Thomas" userEmail="t@example.com" accountId="gid-1" dataRequestCode="code-1" aiOn={aiOn} />
   );
 }
 
@@ -145,7 +145,16 @@ describe("Dashboard", () => {
       const link = screen.getByRole("link", { name: "Open “Contract review” in Gmail" });
       expect(link.getAttribute("href")).toContain("#all/t1");
       expect(link.getAttribute("href")).toContain("authuser=t%40example.com");
-      expect(screen.getByText(/AI summaries are off/)).toBeTruthy();
+      expect(screen.getByText(/AI features are off/)).toBeTruthy();
+    });
+
+    it("doesn't call the rule-sorted list a summary when AI is off on this deployment", async () => {
+      mockApi({});
+      renderDashboard({ aiOn: false });
+      expect(screen.getByRole("tab", { name: "Today's Mail" })).toBeTruthy();
+      expect(screen.queryByRole("tab", { name: /Summary/ })).toBeNull();
+      const caption = await screen.findByText(/AI features are off/);
+      expect(caption.textContent).toMatch(/sorted by simple rules instead of being summarized/);
     });
 
     it("uses the singular for one message", async () => {
@@ -205,7 +214,7 @@ describe("Dashboard", () => {
     it("shows a plain sentence, not parser text, when the server answers with an HTML error page", async () => {
       mockApi({ today: () => htmlError(502) });
       renderDashboard();
-      expect(await screen.findByText("Inbox Buddy couldn't load your summary. Try again in a moment.")).toBeTruthy();
+      expect(await screen.findByText("Inbox Buddy couldn't load today's mail. Try again in a moment.")).toBeTruthy();
       expect(document.body.textContent).not.toMatch(/Unexpected token|JSON/);
     });
 

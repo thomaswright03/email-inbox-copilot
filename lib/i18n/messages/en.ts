@@ -56,6 +56,7 @@ export const en = {
 
   "tabs.label": "Inbox views",
   "tabs.summary": "Today's Summary",
+  "tabs.today": "Today's Mail",
   "tabs.spam": "Spam Flashcards",
   "tabs.spamCount_one": "{count} suspected spam email",
   "tabs.spamCount_other": "{count} suspected spam emails",
@@ -68,7 +69,8 @@ export const en = {
   "summary.refreshing": "Refreshing…",
   "summary.empty": "No messages in the last 24 hours.",
   "summary.ai.generated": "AI-generated summary. It can miss or misstate things, so check your inbox for anything important.",
-  "summary.ai.off": "Simple rule-based list (AI summaries are off). Check your inbox for anything important.",
+  "summary.ai.off":
+    "AI features are off, so today's mail is sorted by simple rules instead of being summarized. Check your inbox for anything important.",
   "summary.ai.unavailable":
     "The AI summary isn't available right now, so this is a simple rule-based list. Check your inbox for anything important.",
   "summary.group.toCheck": "Messages to check ({count})",
@@ -116,7 +118,7 @@ export const en = {
   "toast.undo": "Undo",
   "toast.dismiss": "Dismiss",
 
-  "errors.summaryLoad": "Inbox Buddy couldn't load your summary. Try again in a moment.",
+  "errors.summaryLoad": "Inbox Buddy couldn't load today's mail. Try again in a moment.",
   "errors.spamLoad": "Inbox Buddy couldn't check for spam. Try again in a moment.",
   "errors.action": "That didn't work. Try again in a moment.",
   "errors.network": "Couldn't reach Inbox Buddy. Check your connection and try again.",

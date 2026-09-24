@@ -27,7 +27,7 @@ test.describe("dashboard", () => {
 
     await expect(page.getByText("3 messages in the last 24 hours")).toBeVisible();
     await expect(page.getByText(/^Updated \d/)).toBeVisible();
-    await expect(page.getByText(/AI summaries are off/)).toBeVisible();
+    await expect(page.getByText(/AI features are off/)).toBeVisible();
     await expect(page.getByRole("heading", { name: "Messages to check (1)" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Likely promotional or bulk (2)" })).toBeVisible();
     const link = page.getByRole("link", { name: "Open “Contract review before Friday” in Gmail" });
@@ -42,7 +42,7 @@ test.describe("dashboard", () => {
   test("tabs are real tabs, keyboard-operable, and the spam count is spelled out", async ({ page, context }) => {
     await signInAs(context);
     await page.goto("/");
-    const summary = page.getByRole("tab", { name: /Today's Summary/ });
+    const summary = page.getByRole("tab", { name: "Today's Mail" });
     const spam = page.getByRole("tab", { name: /Spam Flashcards/ });
     await expect(summary).toHaveAttribute("aria-selected", "true");
     await expect(spam).toContainText("2 suspected spam emails");
@@ -154,7 +154,7 @@ test.describe("dashboard", () => {
       route.fulfill({ status: 502, contentType: "text/html", body: "<html><body>502 Bad Gateway</body></html>" })
     );
     await page.goto("/");
-    await expect(page.getByRole("alert").filter({ hasText: "Inbox Buddy couldn't load your summary. Try again in a moment." })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "Inbox Buddy couldn't load today's mail. Try again in a moment." })).toBeVisible();
     await page.getByRole("tab", { name: /Spam Flashcards/ }).click();
     await expect(page.getByRole("alert").filter({ hasText: "Inbox Buddy couldn't check for spam. Try again in a moment." })).toBeVisible();
     await expect(page.locator("body")).not.toContainText("Unexpected token");

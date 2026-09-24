@@ -36,11 +36,16 @@ export default function Dashboard({
   userEmail,
   accountId,
   dataRequestCode,
+  aiOn,
 }: {
   userName: string;
   userEmail: string;
   accountId: string;
   dataRequestCode: string | null;
+  // AI features are enabled on this deployment (lib/ai.ts aiEnabled). When
+  // they are off, the first tab is a rule-sorted list, so it isn't called a
+  // summary.
+  aiOn: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -166,7 +171,7 @@ export default function Dashboard({
       <DashboardHeader userName={userName} />
 
       <main className="mx-auto max-w-2xl px-4 py-6">
-        <Tabs tab={tab} spamCount={spamCount} onChange={setTab} />
+        <Tabs tab={tab} spamCount={spamCount} onChange={setTab} summaryLabel={aiOn ? "tabs.summary" : "tabs.today"} />
 
         <div role="tabpanel" id={panelId(tab)} aria-labelledby={tabId(tab)}>
           {tab === "summary" ? (

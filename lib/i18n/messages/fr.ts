@@ -56,6 +56,7 @@ export const fr: Messages = {
 
   "tabs.label": "Vues de la boîte de réception",
   "tabs.summary": "Résumé du jour",
+  "tabs.today": "Courrier du jour",
   "tabs.spam": "Cartes de spam",
   "tabs.spamCount_one": "{count} e-mail suspecté de spam",
   "tabs.spamCount_other": "{count} e-mails suspectés de spam",
@@ -70,7 +71,7 @@ export const fr: Messages = {
   "summary.ai.generated":
     "Résumé généré par IA. Il peut omettre ou déformer des informations : vérifiez votre boîte de réception pour tout ce qui est important.",
   "summary.ai.off":
-    "Liste simple basée sur des règles (les résumés par IA sont désactivés). Vérifiez votre boîte de réception pour tout ce qui est important.",
+    "Les fonctions d'IA sont désactivées : le courrier du jour est trié par des règles simples au lieu d'être résumé. Vérifiez votre boîte de réception pour tout ce qui est important.",
   "summary.ai.unavailable":
     "Le résumé par IA n'est pas disponible pour le moment, voici donc une liste simple basée sur des règles. Vérifiez votre boîte de réception pour tout ce qui est important.",
   "summary.group.toCheck": "Messages à vérifier ({count})",
@@ -125,7 +126,7 @@ export const fr: Messages = {
   "toast.undo": "Annuler",
   "toast.dismiss": "Fermer",
 
-  "errors.summaryLoad": "Inbox Buddy n'a pas pu charger votre résumé. Réessayez dans un instant.",
+  "errors.summaryLoad": "Inbox Buddy n'a pas pu charger le courrier du jour. Réessayez dans un instant.",
   "errors.spamLoad": "Inbox Buddy n'a pas pu vérifier le spam. Réessayez dans un instant.",
   "errors.action": "Cela n'a pas fonctionné. Réessayez dans un instant.",
   "errors.network": "Impossible de joindre Inbox Buddy. Vérifiez votre connexion et réessayez.",

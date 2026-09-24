@@ -15,7 +15,17 @@ export function panelId(tab: Tab) {
 
 // WAI-ARIA tabs: the selected tab is announced, arrow keys (and Home/End)
 // move between tabs, and only the selected tab is in the Tab order.
-export default function Tabs({ tab, spamCount, onChange }: { tab: Tab; spamCount: number | null; onChange: (tab: Tab) => void }) {
+export default function Tabs({
+  tab,
+  spamCount,
+  onChange,
+  summaryLabel = "tabs.summary",
+}: {
+  tab: Tab;
+  spamCount: number | null;
+  onChange: (tab: Tab) => void;
+  summaryLabel?: "tabs.summary" | "tabs.today";
+}) {
   const { t } = useI18n();
   const refs = useRef<Record<Tab, HTMLButtonElement | null>>({ summary: null, spam: null });
 
@@ -57,7 +67,7 @@ export default function Tabs({ tab, spamCount, onChange }: { tab: Tab; spamCount
               selected ? "bg-surface-hover text-foreground" : "text-muted hover:text-foreground"
             }`}
           >
-            {t(name === "summary" ? "tabs.summary" : "tabs.spam")}
+            {t(name === "summary" ? summaryLabel : "tabs.spam")}
             {name === "spam" && spamCount !== null && spamCount > 0 && (
               <>
                 <span

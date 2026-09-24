@@ -56,6 +56,7 @@ export const es: Messages = {
 
   "tabs.label": "Vistas de la bandeja",
   "tabs.summary": "Resumen de hoy",
+  "tabs.today": "Correo de hoy",
   "tabs.spam": "Tarjetas de spam",
   "tabs.spamCount_one": "{count} correo sospechoso de spam",
   "tabs.spamCount_other": "{count} correos sospechosos de spam",
@@ -70,7 +71,7 @@ export const es: Messages = {
   "summary.ai.generated":
     "Resumen generado por IA. Puede omitir o describir mal cosas, así que revisa tu bandeja para todo lo importante.",
   "summary.ai.off":
-    "Lista sencilla basada en reglas (los resúmenes con IA están desactivados). Revisa tu bandeja para todo lo importante.",
+    "Las funciones de IA están desactivadas, así que el correo de hoy se ordena con reglas sencillas en lugar de resumirse. Revisa tu bandeja para todo lo importante.",
   "summary.ai.unavailable":
     "El resumen con IA no está disponible en este momento, así que esta es una lista sencilla basada en reglas. Revisa tu bandeja para todo lo importante.",
   "summary.group.toCheck": "Mensajes para revisar ({count})",
@@ -125,7 +126,7 @@ export const es: Messages = {
   "toast.undo": "Deshacer",
   "toast.dismiss": "Cerrar",
 
-  "errors.summaryLoad": "Inbox Buddy no pudo cargar tu resumen. Inténtalo de nuevo en un momento.",
+  "errors.summaryLoad": "Inbox Buddy no pudo cargar el correo de hoy. Inténtalo de nuevo en un momento.",
   "errors.spamLoad": "Inbox Buddy no pudo revisar el spam. Inténtalo de nuevo en un momento.",
   "errors.action": "No funcionó. Inténtalo de nuevo en un momento.",
   "errors.network": "No se pudo conectar con Inbox Buddy. Revisa tu conexión e inténtalo de nuevo.",
