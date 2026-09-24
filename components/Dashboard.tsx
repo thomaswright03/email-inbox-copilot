@@ -327,7 +327,18 @@ export default function Dashboard({ userName }: { userName: string }) {
                   <SkeletonLines />
                 ) : (
                   <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none prose-headings:text-sm prose-headings:font-semibold prose-p:leading-relaxed prose-li:my-0.5">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{today?.summary ?? ""}</ReactMarkdown>
+                    {/* The summary is model output over attacker-written emails: raw
+                        HTML is skipped and links/images are rendered as
+                        their text only, so an injected prompt can't plant a
+                        phishing link or a data-exfiltrating image URL. */}
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      skipHtml
+                      disallowedElements={["a", "img"]}
+                      unwrapDisallowed
+                    >
+                      {today?.summary ?? ""}
+                    </ReactMarkdown>
                   </div>
                 )}
               </div>

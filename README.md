@@ -29,6 +29,7 @@ Fill in:
 
 - `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` — from step 1.
 - `AUTH_SECRET` — generate with `npx auth secret`.
+- `ALLOWED_EMAILS` — optional allowlist of Google accounts (addresses and/or `@domain`s) allowed to sign in. Set it for any private deployment.
 - `GEMINI_API_KEY` — free-tier key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
 - `DATABASE_URL` — optional. Powers the Delete/Unsubscribe/Ignore/spam-classification audit log (`lib/audit.ts`). On Vercel: Storage tab → Create Database → search "Neon"/"Postgres" in the Marketplace. Without it, audit logging silently no-ops rather than breaking the app; `GET /api/health` (signed in) reports whether it's actually configured and reachable.
 
@@ -44,12 +45,12 @@ Open [http://localhost:3000](http://localhost:3000) and sign in with Google.
 ### 4. Tests
 
 ```bash
-npm test        # Vitest — SSRF blocklist, spam heuristic, header parsing, caching, token refresh
+npm test        # Vitest — SSRF, CSRF, input validation, rate limits, prompt-injection guards, caching, token refresh
 npm run lint
 npx tsc --noEmit
 ```
 
-All three also run in CI (`.github/workflows/ci.yml`) on every push and pull request.
+All three, plus `npm audit` and a gitleaks secret scan, run in CI (`.github/workflows/ci.yml`) on every push and pull request; CodeQL runs in `.github/workflows/codeql.yml`.
 
 ## Notes / current scope
 
@@ -57,5 +58,6 @@ All three also run in CI (`.github/workflows/ci.yml`) on every push and pull req
 - Spam detection is a heuristic pre-filter (keywords, all-caps subjects, presence of `List-Unsubscribe`) followed by a Gemini pass to cut false positives. It only looks at messages sitting in the inbox, not ones already in Junk.
 - Uses `gemini-3.5-flash-lite`, which is free (500 requests/day) as of writing — check [Google AI Studio pricing](https://ai.google.dev/pricing) if that changes.
 - "Unsubscribe" only works when the sender includes a `List-Unsubscribe` header with an HTTP(S) link (most legitimate marketing senders do; mailto-only or link-less senders will show a disabled button).
-- Access tokens are refreshed automatically in the background (`auth.ts`, `lib/google-auth.ts`); a session stays active as long as you keep using the app, and only expires after 30 days of inactivity or if you sign out / revoke access.
+- Access tokens are refreshed automatically in the background (`auth.ts`, `lib/google-auth.ts`); a session stays active as long as you keep using the app, and only expires after 7 days of inactivity or if you sign out / revoke access.
+- Security controls and the operator checklist are in [`SECURITY.md`](SECURITY.md).
 - No packaging step yet (Phase 4 from the original spec — Electron/Tauri) since this runs fine as a plain web app in any browser. See `docs/scope-decision-gmail-only.md` for the reasoning behind the Gmail-only, browser-based scope vs. the original cross-platform ask.

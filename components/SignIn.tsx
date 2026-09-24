@@ -30,14 +30,7 @@ function GoogleIcon() {
 export default function SignIn() {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10"
-        style={{
-          background:
-            "radial-gradient(600px circle at 15% 20%, var(--accent-soft), transparent 60%), radial-gradient(500px circle at 85% 80%, var(--accent-soft), transparent 60%)",
-        }}
-      />
+      <div aria-hidden className="signin-glow pointer-events-none absolute inset-0 -z-10" />
 
       <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-8 shadow-sm">
         <div className="mb-6 flex h-11 w-11 items-center justify-center rounded-xl bg-accent-soft">

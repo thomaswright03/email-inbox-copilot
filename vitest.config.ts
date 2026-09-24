@@ -6,7 +6,7 @@ export default defineConfig({
     environment: "node",
     // lib/ai.ts constructs its Gemini client at module load time; give it a
     // placeholder key in tests so importing the module doesn't warn.
-    env: { GEMINI_API_KEY: "test-key" },
+    env: { GEMINI_API_KEY: "test-key", AUTH_SECRET: "test-auth-secret-for-vitest-only" },
   },
   resolve: {
     alias: {

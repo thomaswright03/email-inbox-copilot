@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@/auth", () => ({ auth: vi.fn() }));
+vi.mock("@/lib/session", () => ({ getGoogleSession: vi.fn() }));
 vi.mock("@/lib/gmail", () => ({
   trashMessage: vi.fn(),
   archiveMessage: vi.fn(),
@@ -12,16 +12,20 @@ vi.mock("@/lib/safe-fetch", async (importOriginal) => {
 });
 vi.mock("@/lib/audit", () => ({ logAuditEvent: vi.fn() }));
 
-import { auth } from "@/auth";
+import { getGoogleSession } from "@/lib/session";
 import { trashMessage, archiveMessage, getListUnsubscribeHeader } from "@/lib/gmail";
 import { safeFetchUnsubscribe, UnsafeUrlError } from "@/lib/safe-fetch";
 import { logAuditEvent } from "@/lib/audit";
 import { POST } from "./route";
 
+function sessionFor(email: string) {
+  return { userId: `gid-${email}`, userEmail: email, userName: null, accessToken: "tok", consented: true };
+}
+
 function postRequest(body: unknown) {
   return new Request("http://localhost/api/actions", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Origin: "http://localhost" },
     body: JSON.stringify(body),
   });
 }
@@ -30,13 +34,13 @@ describe("POST /api/actions", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("returns 401 when not authenticated", async () => {
-    vi.mocked(auth).mockResolvedValue(null as never);
+    vi.mocked(getGoogleSession).mockResolvedValue(null);
     const res = await POST(postRequest({ action: "delete", messageId: "m1" }));
     expect(res.status).toBe(401);
   });
 
   it("delete: trashes the message and logs it", async () => {
-    vi.mocked(auth).mockResolvedValue({ accessToken: "tok", user: { email: "a@example.com" } } as never);
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
 
     const res = await POST(postRequest({ action: "delete", messageId: "m1" }));
     const body = await res.json();
@@ -47,7 +51,7 @@ describe("POST /api/actions", () => {
   });
 
   it("delete: returns 502 and does not log success when Gmail trash fails", async () => {
-    vi.mocked(auth).mockResolvedValue({ accessToken: "tok", user: { email: "a@example.com" } } as never);
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
     vi.mocked(trashMessage).mockRejectedValue(new Error("Gmail down"));
 
     const res = await POST(postRequest({ action: "delete", messageId: "m1" }));
@@ -57,7 +61,7 @@ describe("POST /api/actions", () => {
   });
 
   it("ignore: logs without calling any Gmail mutation", async () => {
-    vi.mocked(auth).mockResolvedValue({ accessToken: "tok", user: { email: "a@example.com" } } as never);
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
 
     const res = await POST(postRequest({ action: "ignore", messageId: "m1" }));
     const body = await res.json();
@@ -69,7 +73,7 @@ describe("POST /api/actions", () => {
   });
 
   it("unsubscribe: no List-Unsubscribe header -> 400, logged as failed", async () => {
-    vi.mocked(auth).mockResolvedValue({ accessToken: "tok", user: { email: "a@example.com" } } as never);
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
     vi.mocked(getListUnsubscribeHeader).mockResolvedValue(null);
 
     const res = await POST(postRequest({ action: "unsubscribe", messageId: "m1" }));
@@ -83,7 +87,7 @@ describe("POST /api/actions", () => {
   });
 
   it("unsubscribe: mailto-only header -> 400, no automatic link", async () => {
-    vi.mocked(auth).mockResolvedValue({ accessToken: "tok", user: { email: "a@example.com" } } as never);
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
     vi.mocked(getListUnsubscribeHeader).mockResolvedValue("<mailto:unsub@example.com>");
 
     const res = await POST(postRequest({ action: "unsubscribe", messageId: "m1" }));
@@ -93,7 +97,7 @@ describe("POST /api/actions", () => {
   });
 
   it("unsubscribe: unsafe URL is blocked by safe-fetch and reported to the user", async () => {
-    vi.mocked(auth).mockResolvedValue({ accessToken: "tok", user: { email: "a@example.com" } } as never);
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
     vi.mocked(getListUnsubscribeHeader).mockResolvedValue("<https://example.com/unsub>");
     vi.mocked(safeFetchUnsubscribe).mockRejectedValue(new UnsafeUrlError("blocked"));
 
@@ -106,9 +110,9 @@ describe("POST /api/actions", () => {
   });
 
   it("unsubscribe: success -> fetches, archives, and logs succeeded", async () => {
-    vi.mocked(auth).mockResolvedValue({ accessToken: "tok", user: { email: "a@example.com" } } as never);
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
     vi.mocked(getListUnsubscribeHeader).mockResolvedValue("<https://example.com/unsub>");
-    vi.mocked(safeFetchUnsubscribe).mockResolvedValue(new Response("ok", { status: 200 }));
+    vi.mocked(safeFetchUnsubscribe).mockResolvedValue({ status: 200, location: null });
 
     const res = await POST(postRequest({ action: "unsubscribe", messageId: "m1" }));
     const body = await res.json();
@@ -118,5 +122,67 @@ describe("POST /api/actions", () => {
     expect(logAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({ action: "unsubscribe", detail: "succeeded" })
     );
+  });
+
+  it("rejects a cross-site request before touching the session or Gmail", async () => {
+    const req = new Request("http://localhost/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: "https://evil.example" },
+      body: JSON.stringify({ action: "delete", messageId: "m1" }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(403);
+    expect(getGoogleSession).not.toHaveBeenCalled();
+    expect(trashMessage).not.toHaveBeenCalled();
+  });
+
+  it("rejects a request with neither Origin nor a same-origin Sec-Fetch-Site", async () => {
+    const req = new Request("http://localhost/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", messageId: "m1" }),
+    });
+    expect((await POST(req)).status).toBe(403);
+  });
+
+  it("returns 403 when the user hasn't accepted the current terms", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue({ ...sessionFor("c@example.com"), consented: false });
+    const res = await POST(postRequest({ action: "delete", messageId: "m1" }));
+    expect(res.status).toBe(403);
+    expect(trashMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ action: "delete", messageId: "../../users/other" }],
+    [{ action: "delete", messageId: "" }],
+    [{ action: "delete", messageId: 123 }],
+    [{ action: "nuke", messageId: "m1" }],
+    [{ action: "delete", messageId: "m1", extra: true }],
+    ["not an object"],
+  ])("rejects malformed input %j with 400", async (body) => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("v@example.com"));
+    const res = await POST(postRequest(body));
+    expect(res.status).toBe(400);
+    expect(trashMessage).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for a body that isn't JSON", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("v@example.com"));
+    const req = new Request("http://localhost/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: "http://localhost" },
+      body: "{not json",
+    });
+    expect((await POST(req)).status).toBe(400);
+  });
+
+  it("rate-limits a user who fires too many actions", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("burst@example.com"));
+    const statuses: number[] = [];
+    for (let i = 0; i < 35; i++) {
+      statuses.push((await POST(postRequest({ action: "ignore", messageId: `m${i}` }))).status);
+    }
+    expect(statuses.filter((s) => s === 200)).toHaveLength(30);
+    expect(statuses.at(-1)).toBe(429);
   });
 });

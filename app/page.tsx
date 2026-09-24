@@ -1,19 +1,18 @@
-import { auth } from "@/auth";
+import { getGoogleSession } from "@/lib/session";
 import SignIn from "@/components/SignIn";
 import Dashboard from "@/components/Dashboard";
 import ConsentGate from "@/components/ConsentGate";
-import { LEGAL_VERSION } from "@/content/legal";
 
 export default async function Home() {
-  const session = await auth();
+  const session = await getGoogleSession();
 
-  if (!session?.accessToken) {
+  if (!session) {
     return <SignIn />;
   }
 
-  if (session.legalVersionAccepted !== LEGAL_VERSION) {
+  if (!session.consented) {
     return <ConsentGate />;
   }
 
-  return <Dashboard userName={session.user?.name ?? session.user?.email ?? "you"} />;
+  return <Dashboard userName={session.userName ?? session.userEmail} />;
 }

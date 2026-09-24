@@ -1,13 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@/auth", () => ({ auth: vi.fn() }));
+vi.mock("@/lib/session", () => ({ getGoogleSession: vi.fn() }));
 vi.mock("@/lib/gmail", () => ({ fetchTodaysMessages: vi.fn() }));
 vi.mock("@/lib/ai", () => ({ summarizeToday: vi.fn() }));
 
-import { auth } from "@/auth";
+import { getGoogleSession } from "@/lib/session";
 import { fetchTodaysMessages } from "@/lib/gmail";
 import { summarizeToday } from "@/lib/ai";
 import { GET } from "./route";
+
+function sessionFor(email: string) {
+  return { userId: `gid-${email}`, userEmail: email, userName: null, accessToken: "tok", consented: true };
+}
+
+function getRequest() {
+  return new Request("http://localhost/api/emails/today");
+}
 
 // These exercise the actual route handler end to end — auth, Gmail, and
 // Gemini are the true external boundaries (mocked); everything in between
@@ -18,15 +26,15 @@ describe("GET /api/emails/today", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("returns 401 when not authenticated", async () => {
-    vi.mocked(auth).mockResolvedValue(null as never);
+    vi.mocked(getGoogleSession).mockResolvedValue(null);
 
-    const res = await GET();
+    const res = await GET(getRequest());
 
     expect(res.status).toBe(401);
   });
 
   it("returns the summary, count, and mapped emails on success", async () => {
-    vi.mocked(auth).mockResolvedValue({ accessToken: "tok", user: { email: "int-test-1@example.com" } } as never);
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-1@example.com"));
     vi.mocked(fetchTodaysMessages).mockResolvedValue([
       {
         id: "m1",
@@ -41,7 +49,7 @@ describe("GET /api/emails/today", () => {
     ]);
     vi.mocked(summarizeToday).mockResolvedValue("**Summary**");
 
-    const res = await GET();
+    const res = await GET(getRequest());
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -53,10 +61,10 @@ describe("GET /api/emails/today", () => {
   });
 
   it("returns a 502 with a distinguishable message when Gmail fails", async () => {
-    vi.mocked(auth).mockResolvedValue({ accessToken: "tok", user: { email: "int-test-2@example.com" } } as never);
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-2@example.com"));
     vi.mocked(fetchTodaysMessages).mockRejectedValue(new Error("Gmail down"));
 
-    const res = await GET();
+    const res = await GET(getRequest());
     const body = await res.json();
 
     expect(res.status).toBe(502);
@@ -64,11 +72,11 @@ describe("GET /api/emails/today", () => {
   });
 
   it("returns a 502 with a distinguishable message when Gemini fails", async () => {
-    vi.mocked(auth).mockResolvedValue({ accessToken: "tok", user: { email: "int-test-3@example.com" } } as never);
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-3@example.com"));
     vi.mocked(fetchTodaysMessages).mockResolvedValue([]);
     vi.mocked(summarizeToday).mockRejectedValue(new Error("Gemini down"));
 
-    const res = await GET();
+    const res = await GET(getRequest());
     const body = await res.json();
 
     expect(res.status).toBe(502);
@@ -76,12 +84,12 @@ describe("GET /api/emails/today", () => {
   });
 
   it("serves a second request from cache without calling Gmail/Gemini again", async () => {
-    vi.mocked(auth).mockResolvedValue({ accessToken: "tok", user: { email: "int-test-4@example.com" } } as never);
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-4@example.com"));
     vi.mocked(fetchTodaysMessages).mockResolvedValue([]);
     vi.mocked(summarizeToday).mockResolvedValue("No messages received today.");
 
-    await GET();
-    await GET();
+    await GET(getRequest());
+    await GET(getRequest());
 
     expect(fetchTodaysMessages).toHaveBeenCalledTimes(1);
     expect(summarizeToday).toHaveBeenCalledTimes(1);
