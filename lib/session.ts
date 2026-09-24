@@ -25,7 +25,10 @@ const EXPIRY_MARGIN_SECONDS = 60;
 export async function getGoogleSession(headers?: Headers): Promise<GoogleSession | null> {
   const secret = process.env.AUTH_SECRET;
   if (!secret) {
-    logError("session", new Error("AUTH_SECRET is not set"));
+    // A running server without the secret can't read any session: that is
+    // reported loudly. `next build` renders pages without runtime secrets,
+    // so there it is expected and not an error.
+    if (process.env.NEXT_PHASE !== "phase-production-build") logError("session", new Error("AUTH_SECRET is not set"));
     return null;
   }
 

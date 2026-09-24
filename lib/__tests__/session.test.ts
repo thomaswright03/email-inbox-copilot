@@ -79,4 +79,18 @@ describe("getGoogleSession", () => {
     expect(await getGoogleSession(await cookieHeaders({ ...BASE, expiresAt: inAnHour() }))).toBeNull();
     vi.unstubAllEnvs();
   });
+
+  it("reports a missing AUTH_SECRET at error level at runtime, but not while next build renders pages", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv("AUTH_SECRET", "");
+    vi.stubEnv("NEXT_PHASE", "phase-production-build");
+    expect(await getGoogleSession(new Headers())).toBeNull();
+    expect(error).not.toHaveBeenCalled();
+
+    vi.stubEnv("NEXT_PHASE", "phase-production-server");
+    expect(await getGoogleSession(new Headers())).toBeNull();
+    expect(error.mock.calls.map(([line]) => String(line)).join("\n")).toMatch(/"level":"error".*AUTH_SECRET is not set/);
+    vi.unstubAllEnvs();
+    error.mockRestore();
+  });
 });
