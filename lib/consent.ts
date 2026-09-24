@@ -6,6 +6,13 @@ import { logError } from "./log";
 // which case the acceptance is not applied (auth.ts), so nobody reaches
 // their inbox data without a stored record. Without DATABASE_URL (local
 // development only) there is nowhere to record it and it returns true.
+// False when agreements can't be recorded at all: a production deployment
+// without DATABASE_URL. The consent screen then says the service isn't set
+// up, instead of asking the user to retry something that can't succeed.
+export function consentStorageReady(): boolean {
+  return Boolean(process.env.DATABASE_URL) || process.env.NODE_ENV !== "production";
+}
+
 export async function recordConsent(googleId: string, legalVersion: string): Promise<boolean> {
   const sql = getSql();
   if (!sql) return process.env.NODE_ENV !== "production";

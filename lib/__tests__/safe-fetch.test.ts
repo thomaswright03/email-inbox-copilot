@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import dns from "node:dns/promises";
-import { isBlockedAddress, toSafeUrl, safeFetchUnsubscribe, UnsafeUrlError, pinnedLookup } from "../safe-fetch";
+import { isBlockedAddress, toSafeUrl, oneClickUnsubscribe, UnsafeUrlError, pinnedLookup } from "../safe-fetch";
 
 describe("isBlockedAddress", () => {
   const blockedIPv4 = [
@@ -154,45 +154,46 @@ describe("pinnedLookup", () => {
   });
 });
 
-describe("safeFetchUnsubscribe", () => {
+describe("oneClickUnsubscribe", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("blocks a redirect chain that starts at a public URL and ends at the cloud metadata endpoint", async () => {
-    // First hop resolves to a public address and returns a redirect to the
-    // AWS/GCP metadata IP; the safety check must be re-applied on that
-    // second hop, not just the first request.
+  it("sends one RFC 8058 POST to a public https URL", async () => {
+    vi.spyOn(dns, "lookup").mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }] as never);
+    const request = vi.fn().mockResolvedValueOnce({ status: 200, location: null });
+
+    const response = await oneClickUnsubscribe("https://example.com/unsub?u=1", request);
+
+    expect(response.status).toBe(200);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith(new URL("https://example.com/unsub?u=1"), {
+      method: "POST",
+      body: "List-Unsubscribe=One-Click",
+      contentType: "application/x-www-form-urlencoded",
+    });
+  });
+
+  it("does not follow a redirect: the redirect status is returned for the caller to reject", async () => {
     vi.spyOn(dns, "lookup").mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }] as never);
     const request = vi.fn().mockResolvedValueOnce({ status: 302, location: "http://169.254.169.254/latest/meta-data/" });
 
-    await expect(safeFetchUnsubscribe("https://example.com/unsub", request)).rejects.toBeInstanceOf(UnsafeUrlError);
-    // Only the first hop should have been requested — the second hop must be
-    // rejected before any request to the metadata address.
+    const response = await oneClickUnsubscribe("https://example.com/unsub", request);
+
+    expect(response.status).toBe(302);
     expect(request).toHaveBeenCalledTimes(1);
   });
 
-  it("follows a redirect chain that stays on public addresses and returns the final response", async () => {
-    vi.spyOn(dns, "lookup")
-      .mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }] as never)
-      .mockResolvedValueOnce([{ address: "93.184.216.35", family: 4 }] as never);
-    const request = vi
-      .fn()
-      .mockResolvedValueOnce({ status: 302, location: "https://example.org/unsub" })
-      .mockResolvedValueOnce({ status: 200, location: null });
-
-    const response = await safeFetchUnsubscribe("https://example.com/unsub", request);
-    expect(response.status).toBe(200);
-    expect(request).toHaveBeenCalledTimes(2);
-  });
-
-  it("rejects the initial URL immediately if it's already unsafe", async () => {
+  it("rejects a plain http URL (RFC 8058 requires https)", async () => {
+    vi.spyOn(dns, "lookup").mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }] as never);
     const request = vi.fn();
-    await expect(safeFetchUnsubscribe("http://169.254.169.254/", request)).rejects.toBeInstanceOf(UnsafeUrlError);
+    await expect(oneClickUnsubscribe("http://example.com/unsub", request)).rejects.toBeInstanceOf(UnsafeUrlError);
     expect(request).not.toHaveBeenCalled();
   });
 
-  it("gives up after too many redirects", async () => {
-    vi.spyOn(dns, "lookup").mockResolvedValue([{ address: "93.184.216.34", family: 4 }] as never);
-    const request = vi.fn().mockResolvedValue({ status: 302, location: "https://example.com/again" });
-    await expect(safeFetchUnsubscribe("https://example.com/unsub", request)).rejects.toBeInstanceOf(UnsafeUrlError);
+  it("rejects a URL that resolves to a private or metadata address", async () => {
+    const request = vi.fn();
+    await expect(oneClickUnsubscribe("https://169.254.169.254/", request)).rejects.toBeInstanceOf(UnsafeUrlError);
+    vi.spyOn(dns, "lookup").mockResolvedValueOnce([{ address: "10.0.0.5", family: 4 }] as never);
+    await expect(oneClickUnsubscribe("https://internal.example/unsub", request)).rejects.toBeInstanceOf(UnsafeUrlError);
+    expect(request).not.toHaveBeenCalled();
   });
 });

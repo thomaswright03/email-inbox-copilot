@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ruleBasedSummary, ruleBasedSpamVerdicts } from "../rules";
+import { ruleBasedGroups, ruleBasedSpamVerdicts } from "../rules";
 import type { ParsedEmail } from "../gmail";
 
 function email(overrides: Partial<ParsedEmail>): ParsedEmail {
@@ -11,30 +11,23 @@ function email(overrides: Partial<ParsedEmail>): ParsedEmail {
     snippet: "Are you free",
     date: "2026-09-24",
     listUnsubscribe: null,
+    listUnsubscribePost: null,
     isInInbox: true,
     ...overrides,
   };
 }
 
-describe("ruleBasedSummary", () => {
-  it("says so when there is nothing to summarize", () => {
-    expect(ruleBasedSummary([])).toBe("No messages received today.");
+describe("ruleBasedGroups", () => {
+  it("returns empty groups when there is nothing to summarize", () => {
+    expect(ruleBasedGroups([])).toEqual({ toCheck: [], bulk: [] });
   });
 
   it("separates ordinary messages from likely bulk mail", () => {
-    const out = ruleBasedSummary([
+    const groups = ruleBasedGroups([
       email({}),
       email({ id: "m2", from: "Shop <deals@shop.example>", subject: "Sale", listUnsubscribe: "<https://shop.example/u>" }),
     ]);
-    expect(out).toContain("Messages to check (1)");
-    expect(out).toContain("**Alice**: Lunch on Friday?");
-    expect(out).toContain("Likely promotional or bulk (1)");
-  });
-
-  it("escapes sender and subject so they can't form links, images or HTML", () => {
-    const out = ruleBasedSummary([email({ subject: "[click](https://evil.example) ![x](https://evil.example/p.png) <b>" })]);
-    expect(out).not.toMatch(/\]\(https/);
-    expect(out).not.toContain("<b>");
+    expect(groups).toEqual({ toCheck: ["m1"], bulk: ["m2"] });
   });
 });
 

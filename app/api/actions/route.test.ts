@@ -1,26 +1,45 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/session", () => ({ getGoogleSession: vi.fn() }));
-vi.mock("@/lib/gmail", () => ({
-  trashMessage: vi.fn(),
-  archiveMessage: vi.fn(),
-  getListUnsubscribeHeader: vi.fn(),
-}));
+vi.mock("@/lib/gmail", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/gmail")>();
+  return {
+    GmailAuthError: actual.GmailAuthError,
+    trashMessage: vi.fn(),
+    untrashMessage: vi.fn(),
+    archiveMessage: vi.fn(),
+    unarchiveMessage: vi.fn(),
+    getUnsubscribeHeaders: vi.fn(),
+  };
+});
 vi.mock("@/lib/safe-fetch", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/safe-fetch")>();
-  return { ...actual, safeFetchUnsubscribe: vi.fn() };
+  return { ...actual, oneClickUnsubscribe: vi.fn() };
 });
 vi.mock("@/lib/audit", () => ({ logAuditEvent: vi.fn() }));
 
 import { getGoogleSession } from "@/lib/session";
-import { trashMessage, archiveMessage, getListUnsubscribeHeader } from "@/lib/gmail";
-import { safeFetchUnsubscribe, UnsafeUrlError } from "@/lib/safe-fetch";
+import {
+  archiveMessage,
+  getUnsubscribeHeaders,
+  GmailAuthError,
+  trashMessage,
+  unarchiveMessage,
+  untrashMessage,
+} from "@/lib/gmail";
+import { oneClickUnsubscribe, UnsafeUrlError } from "@/lib/safe-fetch";
+import { ignoredMessageIds } from "@/lib/ignored";
 import { logAuditEvent } from "@/lib/audit";
 import { POST } from "./route";
 
 function sessionFor(email: string) {
   return { userId: `gid-${email}`, userEmail: email, userName: null, accessToken: "tok", consented: true };
 }
+
+const ONE_CLICK = {
+  listUnsubscribe: "<https://example.com/unsub>",
+  listUnsubscribePost: "List-Unsubscribe=One-Click",
+};
 
 function postRequest(body: unknown) {
   return new Request("http://localhost/api/actions", {
@@ -31,7 +50,7 @@ function postRequest(body: unknown) {
 }
 
 describe("POST /api/actions", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("returns 401 when not authenticated", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(null);
@@ -60,8 +79,19 @@ describe("POST /api/actions", () => {
     expect(logAuditEvent).not.toHaveBeenCalled();
   });
 
-  it("ignore: logs without calling any Gmail mutation", async () => {
+  it("delete: a revoked Gmail grant asks the user to reconnect", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
+    vi.mocked(trashMessage).mockRejectedValue(new GmailAuthError());
+
+    const res = await POST(postRequest({ action: "delete", messageId: "m1" }));
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.code).toBe("gmail_reconnect");
+  });
+
+  it("ignore: remembers the choice without calling any Gmail mutation", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("ig@example.com"));
 
     const res = await POST(postRequest({ action: "ignore", messageId: "m1" }));
     const body = await res.json();
@@ -69,59 +99,133 @@ describe("POST /api/actions", () => {
     expect(body.ok).toBe(true);
     expect(trashMessage).not.toHaveBeenCalled();
     expect(archiveMessage).not.toHaveBeenCalled();
-    expect(logAuditEvent).toHaveBeenCalledWith({ userId: "gid-a@example.com", action: "ignore", messageId: "m1" });
+    expect(logAuditEvent).toHaveBeenCalledWith({ userId: "gid-ig@example.com", action: "ignore", messageId: "m1" });
+    expect(await ignoredMessageIds("gid-ig@example.com")).toEqual(new Set(["m1"]));
+  });
+
+  it("undo_ignore: forgets the Not spam choice", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("ui@example.com"));
+    await POST(postRequest({ action: "ignore", messageId: "m2" }));
+
+    const res = await POST(postRequest({ action: "undo_ignore", messageId: "m2" }));
+
+    expect(res.status).toBe(200);
+    expect(await ignoredMessageIds("gid-ui@example.com")).toEqual(new Set());
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "undo", detail: "not spam" }));
+  });
+
+  it("undo_delete: restores the message from the trash", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
+
+    const res = await POST(postRequest({ action: "undo_delete", messageId: "m1" }));
+
+    expect(res.status).toBe(200);
+    expect(untrashMessage).toHaveBeenCalledWith("tok", "m1");
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "undo", detail: "restored from trash" }));
+  });
+
+  it("undo_archive: moves the message back to the inbox", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
+
+    const res = await POST(postRequest({ action: "undo_archive", messageId: "m1" }));
+
+    expect(res.status).toBe(200);
+    expect(unarchiveMessage).toHaveBeenCalledWith("tok", "m1");
   });
 
   it("unsubscribe: no List-Unsubscribe header -> 400, logged as failed", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
-    vi.mocked(getListUnsubscribeHeader).mockResolvedValue(null);
+    vi.mocked(getUnsubscribeHeaders).mockResolvedValue({ listUnsubscribe: null, listUnsubscribePost: null });
 
     const res = await POST(postRequest({ action: "unsubscribe", messageId: "m1" }));
     const body = await res.json();
 
     expect(res.status).toBe(400);
-    expect(body.ok).toBe(false);
-    expect(logAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ detail: "failed: no List-Unsubscribe header" })
-    );
+    expect(body).toMatchObject({ ok: false, code: "no_unsubscribe" });
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ detail: "failed: no one-click unsubscribe" }));
   });
 
-  it("unsubscribe: mailto-only header -> 400, no automatic link", async () => {
+  it.each([
+    ["mailto only", { listUnsubscribe: "<mailto:unsub@example.com>", listUnsubscribePost: null }],
+    ["https link without one-click", { listUnsubscribe: "<https://example.com/unsub>", listUnsubscribePost: null }],
+  ])("unsubscribe: %s -> 400, the server never requests the link", async (_, headers) => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
-    vi.mocked(getListUnsubscribeHeader).mockResolvedValue("<mailto:unsub@example.com>");
+    vi.mocked(getUnsubscribeHeaders).mockResolvedValue(headers);
 
     const res = await POST(postRequest({ action: "unsubscribe", messageId: "m1" }));
 
     expect(res.status).toBe(400);
-    expect(safeFetchUnsubscribe).not.toHaveBeenCalled();
+    expect(oneClickUnsubscribe).not.toHaveBeenCalled();
+    expect(archiveMessage).not.toHaveBeenCalled();
   });
 
   it("unsubscribe: unsafe URL is blocked by safe-fetch and reported to the user", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
-    vi.mocked(getListUnsubscribeHeader).mockResolvedValue("<https://example.com/unsub>");
-    vi.mocked(safeFetchUnsubscribe).mockRejectedValue(new UnsafeUrlError("blocked"));
+    vi.mocked(getUnsubscribeHeaders).mockResolvedValue(ONE_CLICK);
+    vi.mocked(oneClickUnsubscribe).mockRejectedValue(new UnsafeUrlError("blocked"));
 
     const res = await POST(postRequest({ action: "unsubscribe", messageId: "m1" }));
     const body = await res.json();
 
     expect(res.status).toBe(400);
+    expect(body.code).toBe("unsubscribe_unsafe");
     expect(body.error).toMatch(/isn't allowed/i);
     expect(archiveMessage).not.toHaveBeenCalled();
   });
 
-  it("unsubscribe: success -> fetches, archives, and logs succeeded", async () => {
+  it.each([404, 500, 302])("unsubscribe: sender answers HTTP %i -> not reported as success", async (status) => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
-    vi.mocked(getListUnsubscribeHeader).mockResolvedValue("<https://example.com/unsub>");
-    vi.mocked(safeFetchUnsubscribe).mockResolvedValue({ status: 200, location: null });
+    vi.mocked(getUnsubscribeHeaders).mockResolvedValue(ONE_CLICK);
+    vi.mocked(oneClickUnsubscribe).mockResolvedValue({ status, location: null });
 
     const res = await POST(postRequest({ action: "unsubscribe", messageId: "m1" }));
     const body = await res.json();
 
-    expect(body.ok).toBe(true);
-    expect(archiveMessage).toHaveBeenCalledWith("tok", "m1");
+    expect(res.status).toBe(502);
+    expect(body).toMatchObject({ ok: false, code: "unsubscribe_rejected" });
+    expect(archiveMessage).not.toHaveBeenCalled();
     expect(logAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "unsubscribe", detail: "succeeded" })
+      expect.objectContaining({ action: "unsubscribe", detail: `failed: sender answered HTTP ${status}` })
     );
+  });
+
+  it("unsubscribe: a network error -> 502 unsubscribe_failed", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
+    vi.mocked(getUnsubscribeHeaders).mockResolvedValue(ONE_CLICK);
+    vi.mocked(oneClickUnsubscribe).mockRejectedValue(new Error("ECONNRESET"));
+
+    const res = await POST(postRequest({ action: "unsubscribe", messageId: "m1" }));
+
+    expect(res.status).toBe(502);
+    expect((await res.json()).code).toBe("unsubscribe_failed");
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ detail: "failed: request error" }));
+  });
+
+  it("unsubscribe: success -> one-click POST, archives, and logs succeeded", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
+    vi.mocked(getUnsubscribeHeaders).mockResolvedValue(ONE_CLICK);
+    vi.mocked(oneClickUnsubscribe).mockResolvedValue({ status: 200, location: null });
+
+    const res = await POST(postRequest({ action: "unsubscribe", messageId: "m1" }));
+    const body = await res.json();
+
+    expect(body).toEqual({ ok: true, archived: true });
+    expect(oneClickUnsubscribe).toHaveBeenCalledWith("https://example.com/unsub");
+    expect(archiveMessage).toHaveBeenCalledWith("tok", "m1");
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "unsubscribe", detail: "succeeded" }));
+  });
+
+  it("unsubscribe: succeeded but archive failed -> says so instead of claiming it was archived", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
+    vi.mocked(getUnsubscribeHeaders).mockResolvedValue(ONE_CLICK);
+    vi.mocked(oneClickUnsubscribe).mockResolvedValue({ status: 202, location: null });
+    vi.mocked(archiveMessage).mockRejectedValue(new Error("Gmail down"));
+
+    const res = await POST(postRequest({ action: "unsubscribe", messageId: "m1" }));
+    const body = await res.json();
+
+    expect(body).toEqual({ ok: true, archived: false, warning: "archive_failed" });
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ detail: "succeeded, archive failed" }));
   });
 
   it("rejects a cross-site request before touching the session or Gmail", async () => {

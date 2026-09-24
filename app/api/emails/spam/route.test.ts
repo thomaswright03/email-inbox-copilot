@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/session", () => ({ getGoogleSession: vi.fn() }));
-vi.mock("@/lib/gmail", () => ({ fetchTodaysMessages: vi.fn() }));
+vi.mock("@/lib/gmail", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/gmail")>();
+  return { GmailAuthError: actual.GmailAuthError, fetchRecentMessages: vi.fn() };
+});
 vi.mock("@/lib/ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/ai")>();
   return { ...actual, classifySpam: vi.fn() };
@@ -9,7 +12,8 @@ vi.mock("@/lib/ai", async (importOriginal) => {
 vi.mock("@/lib/audit", () => ({ logAuditEvent: vi.fn() }));
 
 import { getGoogleSession } from "@/lib/session";
-import { fetchTodaysMessages } from "@/lib/gmail";
+import { fetchRecentMessages, type ParsedEmail } from "@/lib/gmail";
+import { markIgnored } from "@/lib/ignored";
 import { classifySpam } from "@/lib/ai";
 import { logAuditEvent } from "@/lib/audit";
 import { GET } from "./route";
@@ -22,7 +26,7 @@ function getRequest() {
   return new Request("http://localhost/api/emails/spam");
 }
 
-const EMAIL = {
+const EMAIL: ParsedEmail = {
   id: "m1",
   threadId: "t1",
   from: "spammer@example.com",
@@ -30,12 +34,17 @@ const EMAIL = {
   snippet: "50% off",
   date: "2026-09-23",
   listUnsubscribe: "<https://example.com/unsub>",
+  listUnsubscribePost: "List-Unsubscribe=One-Click",
   isInInbox: true,
 };
 
+function inbox(emails: ParsedEmail[]) {
+  return { emails, truncated: false, totalEstimate: emails.length };
+}
+
 describe("GET /api/emails/spam", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     vi.unstubAllEnvs();
   });
 
@@ -47,7 +56,7 @@ describe("GET /api/emails/spam", () => {
 
   it("builds flashcards only for messages classified as spam, and logs each one", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-1@example.com"));
-    vi.mocked(fetchTodaysMessages).mockResolvedValue([EMAIL]);
+    vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
     vi.mocked(classifySpam).mockResolvedValue([{ id: "m1", isSpam: true, reason: "marketing" }]);
 
     const res = await GET(getRequest());
@@ -57,11 +66,12 @@ describe("GET /api/emails/spam", () => {
     expect(body.flashcards).toEqual([
       {
         id: "m1",
+        threadId: "t1",
         from: "spammer@example.com",
         subject: "Buy now",
         snippet: "50% off",
-        hasUnsubscribe: true,
         reason: "marketing",
+        unsubscribe: { kind: "one-click" },
       },
     ]);
     expect(logAuditEvent).toHaveBeenCalledWith({
@@ -73,7 +83,7 @@ describe("GET /api/emails/spam", () => {
 
   it("omits a message classified as not spam", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-2@example.com"));
-    vi.mocked(fetchTodaysMessages).mockResolvedValue([EMAIL]);
+    vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
     vi.mocked(classifySpam).mockResolvedValue([{ id: "m1", isSpam: false, reason: "legitimate" }]);
 
     const res = await GET(getRequest());
@@ -83,21 +93,56 @@ describe("GET /api/emails/spam", () => {
     expect(logAuditEvent).not.toHaveBeenCalled();
   });
 
-  it("returns a 502 when Gemini classification fails", async () => {
+  it("falls back to rule-based flags when Gemini classification fails", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-3@example.com"));
-    vi.mocked(fetchTodaysMessages).mockResolvedValue([EMAIL]);
+    vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
     vi.mocked(classifySpam).mockRejectedValue(new Error("Gemini down"));
 
     const res = await GET(getRequest());
     const body = await res.json();
 
+    expect(res.status).toBe(200);
+    expect(body.aiStatus).toBe("unavailable");
+    expect(Array.isArray(body.flashcards)).toBe(true);
+  });
+
+  it("returns a 502 gmail_unavailable when Gmail fails", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-gmail@example.com"));
+    vi.mocked(fetchRecentMessages).mockRejectedValue(new Error("Gmail down"));
+
+    const res = await GET(getRequest());
+
     expect(res.status).toBe(502);
-    expect(body.error).toMatch(/spam/i);
+    expect((await res.json()).code).toBe("gmail_unavailable");
+  });
+
+  it("leaves out a message the user marked Not spam, even from a cached response", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-ignored@example.com"));
+    vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
+    vi.mocked(classifySpam).mockResolvedValue([{ id: "m1", isSpam: true, reason: "marketing" }]);
+
+    expect((await (await GET(getRequest())).json()).flashcards).toHaveLength(1);
+    await markIgnored("gid-int-spam-ignored@example.com", "m1");
+    expect((await (await GET(getRequest())).json()).flashcards).toEqual([]);
+    expect(classifySpam).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["an https link without one-click", { listUnsubscribe: "<https://example.com/u>", listUnsubscribePost: null }, { kind: "link", url: "https://example.com/u" }],
+    ["no header", { listUnsubscribe: null, listUnsubscribePost: null }, null],
+  ])("describes how to unsubscribe for %s", async (_, headers, expected) => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor(`int-spam-unsub-${expected?.kind ?? "none"}@example.com`));
+    vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([{ ...EMAIL, ...headers }]));
+    vi.mocked(classifySpam).mockResolvedValue([{ id: "m1", isSpam: true, reason: "marketing" }]);
+
+    const body = await (await GET(getRequest())).json();
+
+    expect(body.flashcards[0].unsubscribe).toEqual(expected);
   });
 
   it("does not re-log classification events when a second request is served from cache", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-4@example.com"));
-    vi.mocked(fetchTodaysMessages).mockResolvedValue([EMAIL]);
+    vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
     vi.mocked(classifySpam).mockResolvedValue([{ id: "m1", isSpam: true, reason: "marketing" }]);
 
     await GET(getRequest());
@@ -111,14 +156,14 @@ describe("GET /api/emails/spam", () => {
     vi.stubEnv("GEMINI_PAID_TIER_PROJECT", "");
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-5@example.com"));
     const promo = { ...EMAIL, subject: "LIMITED TIME: 50% OFF everything", snippet: "Unsubscribe any time" };
-    vi.mocked(fetchTodaysMessages).mockResolvedValue([promo]);
+    vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([promo]));
 
     const res = await GET(getRequest());
     const body = await res.json();
 
     expect(res.status).toBe(200);
     expect(classifySpam).not.toHaveBeenCalled();
-    expect(body.aiGenerated).toBe(false);
+    expect(body.aiStatus).toBe("off");
     expect(body.flashcards).toHaveLength(1);
     expect(body.flashcards[0]).toMatchObject({ id: "m1", reason: "newsletter" });
   });

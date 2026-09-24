@@ -3,8 +3,38 @@ import { getGoogleSession, type GoogleSession } from "./session";
 import { RateLimitError } from "./rate-limit";
 import { logSecurityEvent } from "./log";
 
-export function jsonError(error: string, status: number, headers?: HeadersInit): NextResponse {
-  return NextResponse.json({ ok: false, error }, { status, headers });
+// Every error response carries a stable `code` (the dashboard shows a
+// translated message for it) and an English `error` sentence as a fallback.
+export type ErrorCode =
+  | "unauthenticated"
+  | "consent_required"
+  | "cross_site"
+  | "invalid_request"
+  | "rate_limited"
+  | "gmail_reconnect"
+  | "gmail_unavailable"
+  | "action_failed"
+  | "no_unsubscribe"
+  | "unsubscribe_unsafe"
+  | "unsubscribe_rejected"
+  | "unsubscribe_failed"
+  | "server_error";
+
+const DEFAULT_CODE: Record<number, ErrorCode> = {
+  400: "invalid_request",
+  401: "unauthenticated",
+  403: "consent_required",
+  413: "invalid_request",
+  415: "invalid_request",
+  429: "rate_limited",
+  502: "action_failed",
+};
+
+export function jsonError(error: string, status: number, headers?: HeadersInit, code?: ErrorCode): NextResponse {
+  return NextResponse.json(
+    { ok: false, code: code ?? DEFAULT_CODE[status] ?? "server_error", error },
+    { status, headers }
+  );
 }
 
 export function rateLimitedResponse(err: RateLimitError): NextResponse {
@@ -45,7 +75,7 @@ export function isSameOriginRequest(req: Request): boolean {
 export function rejectCrossSite(req: Request, route: string): NextResponse | null {
   if (isSameOriginRequest(req)) return null;
   logSecurityEvent("cross_site_request_blocked", { route });
-  return jsonError("Cross-site request blocked", 403);
+  return jsonError("Cross-site request blocked", 403, undefined, "cross_site");
 }
 
 // Reads the body but stops (and cancels the stream) as soon as it exceeds

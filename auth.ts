@@ -46,6 +46,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       options: { httpOnly: true, sameSite: "lax", path: "/", secure: USE_SECURE_COOKIES },
     },
   },
+  // Failed sign-ins (not on the allowlist, unverified email, provider or
+  // configuration errors) land on the app's own page instead of Auth.js's
+  // unstyled default, which the CSP also breaks.
+  pages: { signIn: "/", error: "/auth/error" },
   session: {
     strategy: "jwt",
     // The session cookie carries a Gmail-modify refresh token, so it is

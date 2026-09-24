@@ -10,7 +10,8 @@ export type AuditAction =
   | "sign_in_rejected"
   | "sign_out"
   | "token_refresh_failed"
-  | "consent_accepted";
+  | "consent_accepted"
+  | "undo";
 
 // The logger below is deliberately silent when unconfigured, so nothing
 // else in the app would ever surface a misconfigured DATABASE_URL — this

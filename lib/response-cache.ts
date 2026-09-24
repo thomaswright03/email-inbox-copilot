@@ -3,12 +3,12 @@ import { getCachedDb, setCachedDb, invalidateCachedDb, invalidateCachedDbByPrefi
 
 // Every per-user cache key starts with one of these, followed by the user's
 // stable Google account id — see userCacheKey().
-const USER_KEY_KINDS = ["today", "spam"] as const;
+const USER_KEY_KINDS = ["messages", "today", "spam"] as const;
 export type UserCacheKind = (typeof USER_KEY_KINDS)[number];
 
-export function userCacheKey(kind: UserCacheKind, userId: string, date = new Date()): string {
+export function userCacheKey(kind: UserCacheKind, userId: string, date = new Date(), variant?: string): string {
   if (!userId) throw new Error("userCacheKey requires a user id");
-  return `${kind}:${userId}:${date.toISOString().slice(0, 10)}`;
+  return `${kind}:${userId}:${date.toISOString().slice(0, 10)}${variant ? `:${variant}` : ""}`;
 }
 
 // Concurrent misses for the same key share one fetch, so a burst of parallel
@@ -52,6 +52,24 @@ export async function getOrSetCached<T>(key: string, ttlMs: number, fetcher: () 
 export async function invalidateCachedEverywhere(key: string): Promise<void> {
   invalidateCached(key);
   await invalidateCachedDb(key);
+}
+
+// Reads a cached value from either layer without fetching on a miss.
+export async function peekCached<T>(key: string): Promise<T | undefined> {
+  return getCached<T>(key) ?? (await getCachedDb<T>(key));
+}
+
+// Drops one user's cached inbox data (on Refresh, and after an action
+// changes the mailbox) so the next read goes back to Gmail.
+export async function invalidateUserInbox(userId: string, kinds: readonly UserCacheKind[] = USER_KEY_KINDS): Promise<void> {
+  await Promise.all(
+    kinds.map(async (kind) => {
+      // By prefix, so every variant (e.g. each summary language) goes too.
+      const prefix = `${kind}:${userId}:`;
+      invalidateCachedByPrefix(prefix);
+      await invalidateCachedDbByPrefix(prefix);
+    })
+  );
 }
 
 export async function purgeUserCaches(userId: string): Promise<void> {

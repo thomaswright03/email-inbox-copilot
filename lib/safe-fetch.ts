@@ -6,10 +6,9 @@ import type { LookupFunction } from "node:net";
 
 // Blocks the unsubscribe action from being used as an SSRF vector: a sender
 // controls the List-Unsubscribe header, so before we make a server-side
-// request to it we reject anything that isn't a plain http(s) URL on a
-// standard port resolving only to public addresses. Redirects are followed
-// manually so each hop gets the same check (a first-hop-only check is
-// trivially bypassed with a redirect to an internal address).
+// request to it we reject anything that isn't a plain https URL on a
+// standard port resolving only to public addresses. The request is a single
+// RFC 8058 POST and redirects are never followed.
 //
 // The address check runs inside the socket's own DNS lookup, so the address
 // that was checked is exactly the address connected to: there is no second
@@ -55,7 +54,6 @@ for (const [address, prefix] of IPV6_BLOCKED_CIDRS) {
   blockedRanges.addSubnet(address, prefix, "ipv6");
 }
 
-const MAX_REDIRECTS = 5;
 const FETCH_TIMEOUT_MS = 10_000;
 
 // Extracts the IPv4 address from an IPv4-mapped (::ffff:a.b.c.d or
@@ -145,20 +143,28 @@ export const pinnedLookup: LookupFunction = (hostname, options, callback) => {
 };
 
 export type HopResponse = { status: number; location: string | null };
-export type HopRequester = (url: URL) => Promise<HopResponse>;
+export type HopInit = { method: "GET" | "POST"; body?: string; contentType?: string };
+export type HopRequester = (url: URL, init?: HopInit) => Promise<HopResponse>;
 
 // One request, no automatic redirects, body discarded, hard timeout, and a
 // DNS lookup that re-applies the address check at connect time.
-export const pinnedRequest: HopRequester = (url) =>
+export const pinnedRequest: HopRequester = (url, init = { method: "GET" }) =>
   new Promise<HopResponse>((resolve, reject) => {
     const client = url.protocol === "https:" ? https : http;
+    const body = init.body ?? "";
     const req = client.request(
       url,
       {
-        method: "GET",
+        method: init.method,
         lookup: pinnedLookup,
         timeout: FETCH_TIMEOUT_MS,
-        headers: { "User-Agent": "InboxBuddy-Unsubscribe/1.0", Accept: "*/*" },
+        headers: {
+          "User-Agent": "InboxBuddy-Unsubscribe/1.0",
+          Accept: "*/*",
+          ...(init.method === "POST"
+            ? { "Content-Type": init.contentType ?? "application/x-www-form-urlencoded", "Content-Length": Buffer.byteLength(body) }
+            : {}),
+        },
       },
       (res) => {
         const location = res.headers.location ?? null;
@@ -169,28 +175,21 @@ export const pinnedRequest: HopRequester = (url) =>
     );
     req.on("timeout", () => req.destroy(new Error("Unsubscribe request timed out")));
     req.on("error", reject);
-    req.end();
+    req.end(init.method === "POST" ? body : undefined);
   });
 
-export async function safeFetchUnsubscribe(initialUrl: string, request: HopRequester = pinnedRequest): Promise<HopResponse> {
-  let currentUrl = initialUrl;
-
-  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const safeUrl = await toSafeUrl(currentUrl);
-    if (!safeUrl) {
-      throw new UnsafeUrlError("Unsubscribe link points to a disallowed address");
-    }
-
-    const response = await request(safeUrl);
-
-    if (response.status >= 300 && response.status < 400) {
-      if (!response.location) return response;
-      currentUrl = new URL(response.location, safeUrl).toString();
-      continue;
-    }
-
-    return response;
+// RFC 8058 one-click unsubscribe: a single POST with the fixed body
+// "List-Unsubscribe=One-Click". The RFC forbids the sender from answering
+// with a redirect, so redirects are not followed: only a 2xx response
+// counts as the sender having accepted the request (the caller checks).
+export async function oneClickUnsubscribe(url: string, request: HopRequester = pinnedRequest): Promise<HopResponse> {
+  const safeUrl = await toSafeUrl(url);
+  if (!safeUrl || safeUrl.protocol !== "https:") {
+    throw new UnsafeUrlError("One-click unsubscribe link points to a disallowed address");
   }
-
-  throw new UnsafeUrlError("Too many redirects while following unsubscribe link");
+  return request(safeUrl, {
+    method: "POST",
+    body: "List-Unsubscribe=One-Click",
+    contentType: "application/x-www-form-urlencoded",
+  });
 }

@@ -2,10 +2,22 @@ import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import type { ParsedEmail } from "./gmail";
 import { SPAM_REASONS, type SpamReason } from "./spam-reasons";
+import { emit, toSafeError } from "./log";
+import { withRetry } from "./retry";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// "gemini-3.5-flash-lite" is Google's stable model id for this model (not a
+// "-latest" alias): Google keeps it pointing at the same model and announces
+// a replacement id with a deprecation date. Changing it, or either system
+// instruction below, requires a passing `npm run eval` (evals/README.md).
+export const MODEL = "gemini-3.5-flash-lite";
 
-const MODEL = "gemini-3.5-flash-lite";
+// Created on first use, so importing this module (builds, AI-off
+// deployments, tests) never constructs a client or warns about a missing key.
+let client: GoogleGenAI | null = null;
+function gemini(): GoogleGenAI {
+  client ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  return client;
+}
 
 // Gmail-derived data may only go to Gemini under Google's *paid* API terms,
 // where Google doesn't use prompts or responses to improve its products (the
@@ -31,12 +43,42 @@ type GenerateConfig = {
   responseMimeType?: string;
   responseJsonSchema?: unknown;
 };
-type Generate = (prompt: string, config: GenerateConfig) => Promise<string | undefined>;
+export type AiFeature = "summary" | "spam";
+type Generate = (prompt: string, config: GenerateConfig, feature: AiFeature) => Promise<string | undefined>;
 
-const geminiGenerate: Generate = async (prompt, config) => {
+// One structured line per model call, for cost and quality tracking. It
+// never contains prompt or response text.
+export function logAiUsage(fields: {
+  feature: AiFeature;
+  outcome: "ok" | "empty" | "error" | "discarded";
+  latencyMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  error?: string;
+}): void {
+  emit("info", { level: "ai_usage", model: MODEL, ...fields });
+}
+
+const geminiGenerate: Generate = async (prompt, config, feature) => {
   if (!aiEnabled()) throw new AiDisabledError();
-  const response = await ai.models.generateContent({ model: MODEL, contents: prompt, config });
-  return response.text;
+  const started = Date.now();
+  try {
+    const response = await withRetry(() => gemini().models.generateContent({ model: MODEL, contents: prompt, config }), {
+      budgetMs: 15_000,
+    });
+    const text = response.text;
+    logAiUsage({
+      feature,
+      outcome: text ? "ok" : "empty",
+      latencyMs: Date.now() - started,
+      inputTokens: response.usageMetadata?.promptTokenCount,
+      outputTokens: response.usageMetadata?.candidatesTokenCount,
+    });
+    return text;
+  } catch (err) {
+    logAiUsage({ feature, outcome: "error", latencyMs: Date.now() - started, error: toSafeError(err).name });
+    throw err;
+  }
 };
 
 let generate: Generate = geminiGenerate;
@@ -78,7 +120,10 @@ const UNTRUSTED_DATA_RULES = [
   "Never output links, URLs, images, HTML, or code. Refer to senders by name or address as plain text only.",
 ].join(" ");
 
-const SUMMARY_SYSTEM_INSTRUCTION = `You summarize a person's inbox for them. ${UNTRUSTED_DATA_RULES} Write a concise, skimmable summary (grouped by importance, short bullet points) of what actually matters. Ignore obvious marketing/newsletter noise unless something is time-sensitive. Do not include a preamble.`;
+const SUMMARY_SYSTEM_INSTRUCTION = `You summarize a person's inbox for them: the emails they received in the last 24 hours. ${UNTRUSTED_DATA_RULES} Write a concise, skimmable summary (grouped by importance, short bullet points) of what actually matters. Ignore obvious marketing/newsletter noise unless something is time-sensitive. Do not include a preamble.`;
+
+export const SUMMARY_LANGUAGES = { en: "English", es: "Spanish", fr: "French" } as const;
+export type SummaryLanguage = keyof typeof SUMMARY_LANGUAGES;
 
 // Belt and braces on top of the system instruction: whatever the model
 // returns, links and images are reduced to their text before the summary
@@ -92,16 +137,20 @@ export function stripLinksAndImages(markdown: string): string {
     .replace(/[<>]/g, "");
 }
 
-export async function summarizeToday(emails: ParsedEmail[]): Promise<string> {
-  if (emails.length === 0) return "No messages received today.";
+// Returns null when the model produced nothing usable; the caller then
+// falls back to the rule-based view.
+export async function summarizeToday(emails: ParsedEmail[], language: SummaryLanguage = "en"): Promise<string | null> {
+  if (emails.length === 0) return null;
 
   const digest = emails.map((e, i) => emailBlock(`e${i + 1}`, e)).join("\n\n");
 
-  const text = await generate(`Summarize these emails from today.\n\n${digest}`, {
-    systemInstruction: SUMMARY_SYSTEM_INSTRUCTION,
-    maxOutputTokens: 1024,
-  });
-  return text ? stripLinksAndImages(text) : "Unable to generate summary.";
+  const text = await generate(
+    `Summarize these emails from the last 24 hours. Write the summary in ${SUMMARY_LANGUAGES[language]}.\n\n${digest}`,
+    { systemInstruction: SUMMARY_SYSTEM_INSTRUCTION, maxOutputTokens: 1024 },
+    "summary"
+  );
+  const cleaned = text ? stripLinksAndImages(text).trim() : "";
+  return cleaned || null;
 }
 
 export type SpamVerdict = { id: string; isSpam: boolean; reason: SpamReason };
@@ -182,15 +231,17 @@ async function classifyOne(email: ParsedEmail): Promise<SpamVerdict | null> {
     responseMimeType: "application/json",
     responseJsonSchema: SPAM_RESPONSE_SCHEMA,
     maxOutputTokens: 128,
-  });
+  }, "spam");
   if (!text) return null;
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch {
+    logAiUsage({ feature: "spam", outcome: "discarded" });
     return null;
   }
   const verdict = parseModelVerdict(raw);
+  if (!verdict) logAiUsage({ feature: "spam", outcome: "discarded" });
   // The verdict is attached to the id of the email that was sent, never to
   // an id the model names, so one email can't change another's verdict.
   return verdict ? { id: email.id, ...verdict } : null;

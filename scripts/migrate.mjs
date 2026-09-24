@@ -71,6 +71,7 @@ const grants = [
   `GRANT INSERT ON consent_records TO ${appRole}`,
   `GRANT USAGE ON SEQUENCE consent_records_id_seq TO ${appRole}`,
   `GRANT EXECUTE ON FUNCTION purge_consent_records() TO ${appRole}`,
+  `GRANT SELECT, INSERT, DELETE ON ignored_messages TO ${appRole}`,
 ];
 for (const g of grants) await sql.query(g);
 console.log(`granted least-privilege DML to ${appRole}`);

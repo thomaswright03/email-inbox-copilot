@@ -47,7 +47,7 @@ describe("classifySpam isolation", () => {
       }
       return JSON.stringify({ isSpam: false, reason: "legitimate" });
     });
-    const base = { threadId: "t", date: "", isInInbox: true, listUnsubscribe: "<https://x.example/u>" };
+    const base = { threadId: "t", date: "", isInInbox: true, listUnsubscribe: "<https://x.example/u>", listUnsubscribePost: null };
     const verdicts = await classifySpam([
       { ...base, id: "bank", from: "alerts@bank.example", subject: "verify your account", snippet: "Your statement is ready" },
       {

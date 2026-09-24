@@ -11,6 +11,7 @@ function email(overrides: Partial<ParsedEmail> = {}): ParsedEmail {
     snippet: "Just checking in",
     date: "",
     listUnsubscribe: null,
+    listUnsubscribePost: null,
     isInInbox: true,
     ...overrides,
   };

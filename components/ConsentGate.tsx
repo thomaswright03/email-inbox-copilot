@@ -5,11 +5,14 @@ import { useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
-import { LEGAL_VERSION } from "@/content/legal";
+import { CONTACT_EMAIL, LEGAL_VERSION } from "@/content/legal";
+import Preferences from "./Preferences";
+import { useI18n } from "./I18nProvider";
 
-export default function ConsentGate() {
+export default function ConsentGate({ storageReady }: { storageReady: boolean }) {
   const { update } = useSession();
   const router = useRouter();
+  const { t } = useI18n();
   const [checked, setChecked] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -29,72 +32,69 @@ export default function ConsentGate() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
+      <Preferences className="mb-4 self-end sm:absolute sm:right-4 sm:top-4 sm:mb-0" />
       <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6">
         <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-warning-soft">
-          <ShieldAlert className="h-5 w-5 text-warning" strokeWidth={2} />
+          <ShieldAlert className="h-5 w-5 text-warning" strokeWidth={2} aria-hidden />
         </div>
 
-        <h1 className="text-base font-semibold tracking-tight">Before you continue</h1>
+        <h1 className="text-base font-semibold tracking-tight">{t("consent.title")}</h1>
 
-        <ul className="mt-3 space-y-2 text-sm leading-relaxed text-muted">
-          <li>
-            • When AI features are on, the sender, subject, and a short preview of your recent emails are sent to
-            Google&apos;s Gemini API (paid tier, which Google doesn&apos;t use to improve its products) to write your
-            summary and flag spam. When they are off, nothing is sent to Gemini.
-          </li>
-          <li>
-            • Summaries and spam flags can be incomplete or wrong. Always check your inbox directly for anything
-            time-sensitive or important.
-          </li>
-          <li>
-            • Delete moves a message to Trash. Unsubscribe contacts the sender and archives the message. Both act
-            on your Gmail account immediately.
-          </li>
-          <li>
-            • Don&apos;t connect a mailbox holding privileged legal, medical, or financial-account correspondence.
-          </li>
+        <ul className="mt-3 list-disc space-y-2 pl-4 text-sm leading-relaxed text-muted">
+          <li>{t("consent.ai")}</li>
+          <li>{t("consent.accuracy")}</li>
+          <li>{t("consent.actions")}</li>
+          <li>{t("consent.scope")}</li>
         </ul>
 
-        <label className="mt-5 flex cursor-pointer items-start gap-2.5 text-sm">
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={(e) => setChecked(e.target.checked)}
-            className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-accent"
-          />
-          <span>
-            I am 18 or older, and I have read and agree to the{" "}
-            <Link href="/terms" target="_blank" className="text-accent underline underline-offset-2">
-              Terms of Service
-            </Link>{" "}
-            and{" "}
-            <Link href="/privacy" target="_blank" className="text-accent underline underline-offset-2">
-              Privacy Policy
-            </Link>
-            .
-          </span>
-        </label>
-
-        <button
-          onClick={handleAgree}
-          disabled={!checked || submitting}
-          className="mt-5 w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {submitting ? "Continuing…" : "Agree & Continue"}
-        </button>
-
-        {failed && (
-          <p role="alert" className="mt-3 text-center text-xs text-danger">
-            We couldn&apos;t save your agreement. Please try again in a moment.
+        {!storageReady ? (
+          <p role="alert" className="mt-5 rounded-lg bg-warning-soft px-3 py-2.5 text-sm text-warning">
+            {t("consent.notSetUp", { email: CONTACT_EMAIL })}
           </p>
+        ) : (
+          <>
+            <label className="mt-5 flex cursor-pointer items-start gap-2.5 text-sm">
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => setChecked(e.target.checked)}
+                className="mt-0.5 h-5 w-5 shrink-0 rounded border-border accent-accent"
+              />
+              <span>
+                {t("consent.checkboxPrefix")}{" "}
+                <Link href="/terms" target="_blank" className="text-accent underline underline-offset-2">
+                  {t("legal.terms")}
+                </Link>{" "}
+                {t("signin.and")}{" "}
+                <Link href="/privacy" target="_blank" className="text-accent underline underline-offset-2">
+                  {t("legal.privacy")}
+                </Link>
+                .
+              </span>
+            </label>
+
+            <button
+              onClick={handleAgree}
+              disabled={!checked || submitting}
+              className="tap-h mt-5 w-full rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {submitting ? t("consent.continuing") : t("consent.agree")}
+            </button>
+
+            {failed && (
+              <p role="alert" className="mt-3 text-center text-xs text-danger">
+                {t("consent.saveFailed")}
+              </p>
+            )}
+          </>
         )}
 
         <button
-          onClick={() => signOut()}
-          className="mt-3 w-full text-center text-xs text-muted hover:text-foreground"
+          onClick={() => void signOut()}
+          className="tap-h mt-3 w-full text-center text-xs text-muted hover:text-foreground"
         >
-          Not now — sign out instead
+          {t("consent.signOut")}
         </button>
       </div>
     </div>

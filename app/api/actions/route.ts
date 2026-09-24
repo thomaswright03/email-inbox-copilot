@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { trashMessage, archiveMessage, getListUnsubscribeHeader } from "@/lib/gmail";
-import { safeFetchUnsubscribe, UnsafeUrlError } from "@/lib/safe-fetch";
-import { parseUnsubscribeTargets } from "@/lib/unsubscribe";
+import {
+  archiveMessage,
+  getUnsubscribeHeaders,
+  GmailAuthError,
+  trashMessage,
+  unarchiveMessage,
+  untrashMessage,
+} from "@/lib/gmail";
+import { oneClickUnsubscribe, UnsafeUrlError } from "@/lib/safe-fetch";
+import { unsubscribeMethod } from "@/lib/unsubscribe";
 import { logAuditEvent } from "@/lib/audit";
-import { invalidateCachedEverywhere, userCacheKey } from "@/lib/response-cache";
+import { markIgnored, unmarkIgnored } from "@/lib/ignored";
+import { invalidateUserInbox } from "@/lib/response-cache";
 import { jsonError, rateLimitedResponse, readBodyCapped, rejectCrossSite, requireSession } from "@/lib/api";
 import { enforceRateLimit, RATE_LIMITS, RateLimitError } from "@/lib/rate-limit";
 import { logError, logSecurityEvent } from "@/lib/log";
@@ -13,18 +21,27 @@ import { logError, logSecurityEvent } from "@/lib/log";
 // rejected before it reaches Gmail, the audit log, or a cache key.
 const ActionBodySchema = z
   .object({
-    action: z.enum(["delete", "unsubscribe", "ignore"]),
+    action: z.enum(["delete", "unsubscribe", "ignore", "undo_delete", "undo_archive", "undo_ignore"]),
     messageId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
   })
   .strict();
 
 const MAX_BODY_BYTES = 1024;
 
-async function invalidateEmailCaches(userId: string) {
-  await Promise.all([
-    invalidateCachedEverywhere(userCacheKey("today", userId)),
-    invalidateCachedEverywhere(userCacheKey("spam", userId)),
-  ]);
+function reconnect(): NextResponse {
+  return jsonError("Inbox Buddy has lost access to your Gmail. Reconnect to continue.", 403, undefined, "gmail_reconnect");
+}
+
+// Runs one Gmail change; returns the error response to send, or null.
+async function gmailChange(context: string, fn: () => Promise<void>, failure: string): Promise<NextResponse | null> {
+  try {
+    await fn();
+    return null;
+  } catch (err) {
+    if (err instanceof GmailAuthError) return reconnect();
+    logError(context, err);
+    return jsonError(failure, 502, undefined, "action_failed");
+  }
 }
 
 export async function POST(req: Request) {
@@ -62,78 +79,85 @@ export async function POST(req: Request) {
   const { action, messageId } = parsed.data;
   const { userId, accessToken } = session;
 
-  if (action === "ignore") {
-    await logAuditEvent({ userId, action: "ignore", messageId });
-    return NextResponse.json({ ok: true });
-  }
-
-  if (action === "delete") {
+  if (action === "ignore" || action === "undo_ignore") {
     try {
-      await trashMessage(accessToken, messageId);
+      if (action === "ignore") await markIgnored(userId, messageId);
+      else await unmarkIgnored(userId, messageId);
     } catch (err) {
-      logError("actions.delete", err);
-      return NextResponse.json({ ok: false, error: "Couldn't delete this email right now" }, { status: 502 });
+      logError(`actions.${action}`, err);
+      return jsonError("Couldn't save that right now. Try again in a moment.", 502, undefined, "action_failed");
     }
-    await logAuditEvent({ userId, action: "delete", messageId });
-    await invalidateEmailCaches(userId);
+    await logAuditEvent({ userId, action: action === "ignore" ? "ignore" : "undo", messageId, detail: action === "undo_ignore" ? "not spam" : undefined });
+    await invalidateUserInbox(userId, ["spam"]);
     return NextResponse.json({ ok: true });
   }
 
-  // action === "unsubscribe"
-  let header: string | null;
+  if (action === "delete" || action === "undo_delete" || action === "undo_archive") {
+    const change =
+      action === "delete"
+        ? () => trashMessage(accessToken, messageId)
+        : action === "undo_delete"
+          ? () => untrashMessage(accessToken, messageId)
+          : () => unarchiveMessage(accessToken, messageId);
+    const failed = await gmailChange(`actions.${action}`, change, "Couldn't change this email in Gmail right now. Try again in a moment.");
+    if (failed) return failed;
+    await logAuditEvent(
+      action === "delete"
+        ? { userId, action: "delete", messageId }
+        : { userId, action: "undo", messageId, detail: action === "undo_delete" ? "restored from trash" : "moved back to inbox" }
+    );
+    await invalidateUserInbox(userId);
+    return NextResponse.json({ ok: true });
+  }
+
+  // action === "unsubscribe": only senders that support RFC 8058 one-click
+  // are unsubscribed by the server. For the others the dashboard opens the
+  // sender's page or a prefilled email, because a server-side GET to a
+  // confirmation page would unsubscribe nobody.
+  let headers;
   try {
-    header = await getListUnsubscribeHeader(accessToken, messageId);
+    headers = await getUnsubscribeHeaders(accessToken, messageId);
   } catch (err) {
+    if (err instanceof GmailAuthError) return reconnect();
     logError("actions.unsubscribe.header", err);
-    return NextResponse.json({ ok: false, error: "Couldn't look up unsubscribe info right now" }, { status: 502 });
+    return jsonError("Couldn't look up unsubscribe info right now. Try again in a moment.", 502, undefined, "action_failed");
   }
-  if (!header) {
-    await logAuditEvent({
-      userId,
-      action: "unsubscribe",
-      messageId,
-      detail: "failed: no List-Unsubscribe header",
-    });
-    return NextResponse.json({ ok: false, error: "No unsubscribe method found for this message" }, { status: 400 });
+  const method = unsubscribeMethod(headers.listUnsubscribe, headers.listUnsubscribePost);
+  if (method?.kind !== "one-click") {
+    await logAuditEvent({ userId, action: "unsubscribe", messageId, detail: "failed: no one-click unsubscribe" });
+    return jsonError("This sender doesn't support one-click unsubscribe.", 400, undefined, "no_unsubscribe");
   }
 
-  const { url } = parseUnsubscribeTargets(header);
-  if (!url) {
-    await logAuditEvent({
-      userId,
-      action: "unsubscribe",
-      messageId,
-      detail: "failed: mailto-only, no automatic link",
-    });
-    return NextResponse.json({
-      ok: false,
-      error: "This sender only supports unsubscribing via email; no automatic link available",
-    }, { status: 400 });
-  }
-
+  let status: number;
   try {
-    await safeFetchUnsubscribe(url);
+    ({ status } = await oneClickUnsubscribe(method.url));
   } catch (err) {
-    const unsafe = err instanceof UnsafeUrlError;
-    const detail = unsafe ? "failed: unsafe unsubscribe URL blocked" : "failed: request error";
-    await logAuditEvent({ userId, action: "unsubscribe", messageId, detail });
-    if (unsafe) {
+    if (err instanceof UnsafeUrlError) {
+      await logAuditEvent({ userId, action: "unsubscribe", messageId, detail: "failed: unsafe unsubscribe URL blocked" });
       logSecurityEvent("ssrf_blocked", { route: "actions" });
-      return NextResponse.json({ ok: false, error: "This unsubscribe link isn't allowed" }, { status: 400 });
+      return jsonError("This sender's unsubscribe link isn't allowed.", 400, undefined, "unsubscribe_unsafe");
     }
     logError("actions.unsubscribe.fetch", err);
-    return NextResponse.json({ ok: false, error: "Unsubscribe request failed" }, { status: 502 });
+    await logAuditEvent({ userId, action: "unsubscribe", messageId, detail: "failed: request error" });
+    return jsonError("Couldn't reach the sender to unsubscribe. Try again later.", 502, undefined, "unsubscribe_failed");
+  }
+  if (status < 200 || status > 299) {
+    await logAuditEvent({ userId, action: "unsubscribe", messageId, detail: `failed: sender answered HTTP ${status}` });
+    return jsonError(
+      `The sender didn't accept the unsubscribe request (HTTP ${status}). You are still subscribed.`,
+      502,
+      undefined,
+      "unsubscribe_rejected"
+    );
   }
 
-  try {
-    await archiveMessage(accessToken, messageId);
-  } catch (err) {
-    logError("actions.unsubscribe.archive", err);
-    await logAuditEvent({ userId, action: "unsubscribe", messageId, detail: "succeeded, archive failed" });
-    await invalidateEmailCaches(userId);
-    return NextResponse.json({ ok: true, warning: "Unsubscribed, but couldn't archive the message" });
-  }
-  await logAuditEvent({ userId, action: "unsubscribe", messageId, detail: "succeeded" });
-  await invalidateEmailCaches(userId);
-  return NextResponse.json({ ok: true });
+  const archiveFailed = await gmailChange("actions.unsubscribe.archive", () => archiveMessage(accessToken, messageId), "");
+  await logAuditEvent({
+    userId,
+    action: "unsubscribe",
+    messageId,
+    detail: archiveFailed ? "succeeded, archive failed" : "succeeded",
+  });
+  await invalidateUserInbox(userId);
+  return NextResponse.json(archiveFailed ? { ok: true, archived: false, warning: "archive_failed" } : { ok: true, archived: true });
 }
