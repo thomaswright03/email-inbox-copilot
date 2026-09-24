@@ -2,7 +2,7 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ExternalLink, Inbox, RefreshCw } from "lucide-react";
+import { ChevronRight, ExternalLink, Inbox, RefreshCw } from "lucide-react";
 import { gmailThreadUrl } from "@/lib/gmail-links";
 import { parseSender } from "@/lib/sender";
 import type { TodayPayload } from "@/lib/payloads";
@@ -21,7 +21,9 @@ function MessageRow({ email, accountEmail, locale }: { email: Email; accountEmai
   return (
     <li className="flex items-center gap-3 py-1.5">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm">
+        {/* Cut to one line; the whole sender and subject are in the
+            tooltip (and in the DOM, for assistive tech). */}
+        <p className="truncate text-sm" title={`${name} · ${email.subject}`}>
           <span className="font-medium">{name}</span>
           <span className="text-muted"> · {email.subject}</span>
         </p>
@@ -148,12 +150,17 @@ export default function SummaryPanel({
 
       {data && data.count > 0 && (
         <>
-          <p className="mt-2 text-xs text-muted">
+          <p className="mt-2 text-sm text-muted">
             {t(`summary.ai.${data.aiStatus}`, { time: data.aiResetsAt ? formatResetTime(data.aiResetsAt, locale) : "" })}
           </p>
           {data.summary && (
-            <details className="mt-4 rounded-2xl border border-border bg-surface px-5 py-3">
-              <summary className="tap-h flex cursor-pointer items-center text-sm font-medium">
+            <details className="group mt-4 rounded-2xl border border-border bg-surface px-5 py-3">
+              <summary className="tap-h flex cursor-pointer list-none items-center [&::-webkit-details-marker]:hidden gap-1.5 text-sm font-medium">
+                <ChevronRight
+                  className="h-4 w-4 shrink-0 text-muted transition-transform group-open:rotate-90"
+                  strokeWidth={2}
+                  aria-hidden
+                />
                 {t("summary.allMessages", { count: data.count })}
               </summary>
               <ul className="mt-1 divide-y divide-border">

@@ -118,13 +118,13 @@ export const fr: Messages = {
     "Envoyez l'e-mail prérempli dans Gmail pour terminer le désabonnement, puis supprimez ce message ou marquez-le comme non spam.",
   "spam.noUnsubscribe": "Cet expéditeur ne propose pas d'option de désabonnement.",
   "spam.notSpam": "Pas un spam",
-  "spam.notSpamHint": "Ne plus signaler ce message",
+  "spam.notSpamHint": "Ne plus signaler cet e-mail. Les autres e-mails de cet expéditeur peuvent encore être signalés.",
   "spam.working": "En cours…",
   "spam.openInGmail": "Ouvrir dans Gmail",
 
   "confirm.title": "Supprimer cet e-mail ?",
   "confirm.body":
-    "De {name} : « {subject} ». Il sera placé dans la corbeille de Gmail, et vous pourrez annuler pendant quelques secondes.",
+    "De {name} : « {subject} ». Il sera placé dans la corbeille de Gmail. Vous pouvez annuler ici pendant quelques secondes, et le récupérer dans la corbeille de Gmail pendant 30 jours.",
   "confirm.cancel": "Annuler",
   "confirm.delete": "Supprimer",
 
@@ -132,7 +132,8 @@ export const fr: Messages = {
   "toast.unsubscribed": "Désabonnement de {name} effectué et message archivé.",
   "toast.unsubscribedNotArchived":
     "Désabonnement de {name} effectué, mais le message n'a pas pu être archivé. Il est toujours dans votre boîte de réception.",
-  "toast.notSpam": "« {subject} » a été marqué comme non spam. Il ne sera plus signalé.",
+  "toast.notSpam":
+    "« {subject} » a été marqué comme non spam. Cet e-mail ne sera plus signalé ; les autres e-mails de l'expéditeur peuvent encore l'être.",
   "toast.undone": "Annulé.",
   "toast.undoFailed": "Impossible d'annuler. Vérifiez le message dans Gmail.",
   "toast.undo": "Annuler",
@@ -159,7 +160,7 @@ export const fr: Messages = {
   "errors.signInAgain": "Se reconnecter",
 
   "footer.yourData": "Vos données",
-  "footer.accountId": "Identifiant du compte",
+  "footer.accountId": "Votre numéro de référence pour les demandes de données :",
   "footer.dataIntro": "Écrivez-nous depuis l'adresse de ce compte pour",
   "footer.requestCopy": "demander une copie",
   "footer.or": "ou",

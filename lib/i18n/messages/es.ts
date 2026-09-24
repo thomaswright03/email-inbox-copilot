@@ -118,13 +118,13 @@ export const es: Messages = {
     "Envía el correo ya rellenado en Gmail para terminar la baja y luego elimina este mensaje o márcalo como no spam.",
   "spam.noUnsubscribe": "Este remitente no ofrece una opción para darse de baja.",
   "spam.notSpam": "No es spam",
-  "spam.notSpamHint": "Dejar de marcar este mensaje",
+  "spam.notSpamHint": "Dejar de marcar este correo. Otros correos de este remitente aún pueden marcarse.",
   "spam.working": "Procesando…",
   "spam.openInGmail": "Abrir en Gmail",
 
   "confirm.title": "¿Eliminar este correo?",
   "confirm.body":
-    "De {name}: «{subject}». Se moverá a la papelera de Gmail, y podrás deshacerlo durante unos segundos.",
+    "De {name}: «{subject}». Se moverá a la papelera de Gmail. Puedes deshacerlo aquí durante unos segundos y recuperarlo de la papelera de Gmail durante 30 días.",
   "confirm.cancel": "Cancelar",
   "confirm.delete": "Eliminar",
 
@@ -132,7 +132,8 @@ export const es: Messages = {
   "toast.unsubscribed": "Se canceló la suscripción a {name} y se archivó el mensaje.",
   "toast.unsubscribedNotArchived":
     "Se canceló la suscripción a {name}, pero no se pudo archivar el mensaje. Sigue en tu bandeja de entrada.",
-  "toast.notSpam": "«{subject}» se marcó como no spam. No se volverá a marcar.",
+  "toast.notSpam":
+    "«{subject}» se marcó como no spam. Este correo no se volverá a marcar; otros correos del remitente sí pueden marcarse.",
   "toast.undone": "Deshecho.",
   "toast.undoFailed": "No se pudo deshacer. Revisa el mensaje en Gmail.",
   "toast.undo": "Deshacer",
@@ -159,7 +160,7 @@ export const es: Messages = {
   "errors.signInAgain": "Volver a iniciar sesión",
 
   "footer.yourData": "Tus datos",
-  "footer.accountId": "ID de cuenta",
+  "footer.accountId": "Tu número de referencia para solicitudes de datos:",
   "footer.dataIntro": "Escríbenos desde la dirección de esta cuenta para",
   "footer.requestCopy": "pedir una copia",
   "footer.or": "o",

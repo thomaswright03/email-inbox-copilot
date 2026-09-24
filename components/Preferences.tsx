@@ -61,7 +61,7 @@ export default function Preferences({ className = "" }: { className?: string }) 
 
 // The same controls behind one button, for the crowded dashboard header.
 export function PreferencesMenu() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -82,17 +82,24 @@ export function PreferencesMenu() {
   }, [open]);
 
   const label = `${t("prefs.language")} / ${t("prefs.theme")}`;
+  // The visible language code starts the accessible name too.
+  const name = `${locale.toUpperCase()}: ${label}`;
   return (
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls="preferences-panel"
-        aria-label={label}
+        aria-label={name}
         title={label}
-        className="tap-target flex items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
+        className="tap-h flex items-center justify-center gap-1.5 rounded-lg border border-border px-2.5 text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
       >
         <Settings2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+        {/* The current language, visible without hovering, so someone who
+            lands in the wrong one can find the switch. */}
+        <span className="text-xs font-semibold uppercase tracking-wide">
+          {locale}
+        </span>
       </button>
       {open && (
         <div
@@ -100,7 +107,7 @@ export function PreferencesMenu() {
           className="absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-border bg-surface p-3 shadow-lg"
         >
           <Preferences className="flex-wrap" />
-          <p className="mt-2 text-[11px] text-muted">{t("prefs.legalEnglishOnly")}</p>
+          <p className="mt-2 text-xs text-muted">{t("prefs.legalEnglishOnly")}</p>
         </div>
       )}
     </div>

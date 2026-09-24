@@ -72,7 +72,7 @@ export default function Tabs({
               <>
                 <span
                   aria-hidden
-                  className="flex h-5 min-w-5 items-center justify-center rounded-full bg-warning-soft px-1 text-[11px] font-semibold text-warning"
+                  className="flex h-5 min-w-5 items-center justify-center rounded-full bg-warning-soft px-1 text-xs font-semibold text-warning"
                 >
                   {spamCount}
                 </span>

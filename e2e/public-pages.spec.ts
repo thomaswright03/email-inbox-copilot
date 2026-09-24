@@ -58,6 +58,7 @@ test.describe("sign-in and error pages", () => {
     const response = await page.goto("/no-such-page");
     expect(response?.status()).toBe(404);
     await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+    await expect(page).toHaveTitle("Page not found · Inbox Buddy");
     await page.getByRole("link", { name: "Back to Inbox Buddy" }).click();
     await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
   });

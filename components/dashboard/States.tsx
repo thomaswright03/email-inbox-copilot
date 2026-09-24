@@ -18,7 +18,7 @@ export function SkeletonLines() {
 
 export function SkeletonCards() {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-hidden>
+    <div className="grid grid-cols-1 gap-3" aria-hidden>
       {[0, 1, 2, 3].map((i) => (
         <div key={i} className="animate-pulse rounded-2xl border border-border bg-surface p-4">
           <div className="flex items-center gap-3">

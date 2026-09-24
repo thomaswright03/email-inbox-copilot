@@ -6,10 +6,15 @@ export type Vars = Record<string, string | number>;
 export type PluralKey = { [K in MessageKey]: K extends `${infer Base}_one` ? Base : never }[MessageKey];
 export type Translate = (key: MessageKey | PluralKey, vars?: Vars) => string;
 
-// "{name}" placeholders are filled from vars. When vars.count is a number
-// and "<key>_one" / "<key>_other" exist, the locale's plural rule picks one.
+// "{name}" placeholders are filled from vars; numbers are written the
+// locale's way, with its thousands separator (1,234 / 1.234 / 1 234). When
+// vars.count is a number and "<key>_one" / "<key>_other" exist, the
+// locale's plural rule picks one.
 export function createTranslator(locale: Locale, messages: Messages): Translate {
   const plural = new Intl.PluralRules(locale);
+  // "always": Spanish would otherwise leave four-digit numbers ungrouped.
+  const number = new Intl.NumberFormat(locale, { useGrouping: "always" });
+  const format = (value: string | number) => (typeof value === "number" ? number.format(value) : value);
   return (key, vars) => {
     let template: string | undefined = messages[key as MessageKey];
     if (vars && typeof vars.count === "number") {
@@ -18,6 +23,6 @@ export function createTranslator(locale: Locale, messages: Messages): Translate 
       template = messages[form] ?? messages[other] ?? template;
     }
     if (template === undefined) return key;
-    return vars ? template.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match)) : template;
+    return vars ? template.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? format(vars[name]) : match)) : template;
   };
 }

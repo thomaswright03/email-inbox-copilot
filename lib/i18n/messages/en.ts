@@ -112,19 +112,21 @@ export const en = {
   "spam.finishInGmail": "Send the prefilled email in Gmail to finish unsubscribing, then delete this message or mark it not spam.",
   "spam.noUnsubscribe": "This sender doesn't offer an unsubscribe option.",
   "spam.notSpam": "Not spam",
-  "spam.notSpamHint": "Stop flagging this message",
+  "spam.notSpamHint": "Stop flagging this email. Other emails from this sender can still be flagged.",
   "spam.working": "Working…",
   "spam.openInGmail": "Open in Gmail",
 
   "confirm.title": "Delete this email?",
-  "confirm.body": "From {name}: “{subject}”. This moves it to Gmail Trash, and you can undo it for a few seconds.",
+  "confirm.body":
+    "From {name}: “{subject}”. This moves it to Gmail Trash. You can undo it here for a few seconds, and restore it from Gmail Trash for 30 days.",
   "confirm.cancel": "Cancel",
   "confirm.delete": "Delete",
 
   "toast.deleted": "Moved “{subject}” to Trash.",
   "toast.unsubscribed": "Unsubscribed from {name} and archived the message.",
   "toast.unsubscribedNotArchived": "Unsubscribed from {name}, but couldn't archive the message. It's still in your inbox.",
-  "toast.notSpam": "Marked “{subject}” as not spam. It won't be flagged again.",
+  "toast.notSpam":
+    "Marked “{subject}” as not spam. This email won't be flagged again; other emails from the sender still can be.",
   "toast.undone": "Undone.",
   "toast.undoFailed": "Couldn't undo that. Check the message in Gmail.",
   "toast.undo": "Undo",
@@ -150,7 +152,7 @@ export const en = {
   "errors.signInAgain": "Sign in again",
 
   "footer.yourData": "Your data",
-  "footer.accountId": "Account id",
+  "footer.accountId": "Your reference number for data requests:",
   "footer.dataIntro": "Email us from this account's address to",
   "footer.requestCopy": "request a copy",
   "footer.or": "or",

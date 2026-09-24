@@ -9,13 +9,18 @@ import { reconnectGmail, RECOVERY_LABEL, type Recovery } from "./States";
 
 export type CardNotice = { kind: "error"; message: string; recovery: Recovery } | { kind: "finish"; message: string };
 
+// Labels never wrap: when the buttons don't fit side by side, a whole
+// button moves to the next row instead.
 const BUTTON =
-  "tap-h flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60";
+  "tap-h inline-flex flex-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60";
+
+export type CardAction = "delete" | "unsubscribe" | "ignore";
 
 export default function SpamCard({
   card,
   accountEmail,
   pending,
+  pendingAction,
   removing,
   notice,
   onDelete,
@@ -25,7 +30,10 @@ export default function SpamCard({
 }: {
   card: SpamCardPayload;
   accountEmail: string;
+  // An action on this card is running (every button is disabled), and which
+  // one (only its button says so).
   pending: boolean;
+  pendingAction: CardAction | null;
   removing: boolean;
   notice: CardNotice | null;
   onDelete: () => void;
@@ -69,9 +77,9 @@ export default function SpamCard({
         </a>
       </div>
 
-      <p className="mt-3 line-clamp-2 text-xs text-muted">{card.snippet}</p>
+      <p className="mt-3 line-clamp-2 text-sm text-muted">{card.snippet}</p>
 
-      <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-warning-soft px-2.5 py-1.5 text-xs text-warning">
+      <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-warning-soft px-2.5 py-1.5 text-sm text-warning">
         <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
         {t(`spam.reason.${card.reason}`)}
       </div>
@@ -83,7 +91,7 @@ export default function SpamCard({
           className={`${BUTTON} bg-danger-soft text-danger hover:bg-danger hover:text-danger-foreground`}
         >
           <Trash2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-          {pending ? t("spam.working") : t("spam.delete")}
+          {pendingAction === "delete" ? t("spam.working") : t("spam.delete")}
         </button>
 
         {unsubscribe?.kind === "one-click" && (
@@ -94,7 +102,7 @@ export default function SpamCard({
             className={`${BUTTON} bg-accent-soft text-accent hover:bg-accent hover:text-accent-foreground`}
           >
             <MailX className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-            {pending ? t("spam.working") : t("spam.unsubscribe")}
+            {pendingAction === "unsubscribe" ? t("spam.working") : t("spam.unsubscribe")}
           </button>
         )}
         {(unsubscribe?.kind === "link" || unsubscribe?.kind === "mailto") && (
@@ -118,19 +126,19 @@ export default function SpamCard({
           className={`${BUTTON} border border-border text-foreground hover:bg-surface-hover`}
         >
           <Check className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-          {t("spam.notSpam")}
+          {pendingAction === "ignore" ? t("spam.working") : t("spam.notSpam")}
         </button>
       </div>
 
-      {!unsubscribe && <p className="mt-2 text-[11px] text-muted">{t("spam.noUnsubscribe")}</p>}
+      {!unsubscribe && <p className="mt-2 text-sm text-muted">{t("spam.noUnsubscribe")}</p>}
 
       {notice?.kind === "finish" && (
-        <p role="status" className="mt-2.5 text-xs text-muted">
+        <p role="status" className="mt-2.5 text-sm text-muted">
           {notice.message}
         </p>
       )}
       {notice?.kind === "error" && (
-        <div role="alert" className="mt-2.5 flex items-start gap-2 rounded-lg bg-danger-soft px-2.5 py-2 text-xs text-danger">
+        <div role="alert" className="mt-2.5 flex items-start gap-2 rounded-lg bg-danger-soft px-2.5 py-2 text-sm text-danger">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
           <span className="flex-1">{notice.message}</span>
           {notice.recovery !== "retry" && (

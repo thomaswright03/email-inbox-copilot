@@ -2,10 +2,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 
-const router = { replace: vi.fn(), refresh: vi.fn(), push: vi.fn() };
 let searchParams = new URLSearchParams();
 vi.mock("next/navigation", () => ({
-  useRouter: () => router,
+  useRouter: () => ({ replace: vi.fn(), refresh: vi.fn(), push: vi.fn() }),
   useSearchParams: () => searchParams,
 }));
 vi.mock("next-auth/react", () => ({
@@ -155,6 +154,14 @@ describe("Dashboard", () => {
       expect(screen.queryByRole("tab", { name: /Summary/ })).toBeNull();
       const caption = await screen.findByText(/AI features are off/);
       expect(caption.textContent).toMatch(/sorted by simple rules instead of being summarized/);
+    });
+
+    it("shows the whole sender and subject of a row on hover", async () => {
+      mockApi({});
+      renderDashboard();
+      await screen.findByText("2 messages in the last 24 hours");
+      const link = screen.getByRole("link", { name: "Open “Contract review” in Gmail" });
+      expect(link.closest("li")?.querySelector("p")?.getAttribute("title")).toBe("Ana Ruiz · Contract review");
     });
 
     it("uses the singular for one message", async () => {
@@ -313,16 +320,21 @@ describe("Dashboard", () => {
       expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe("tab-summary");
     });
 
-    it("move with the arrow keys and keep the choice in the URL", async () => {
+    it("move with the arrow keys and add each choice to the browser history", async () => {
+      const pushState = vi.spyOn(window.history, "pushState");
       mockApi({});
       renderDashboard();
       const summaryTab = screen.getByRole("tab", { name: /Today's Summary/ });
       fireEvent.keyDown(summaryTab, { key: "ArrowRight" });
       expect(screen.getByRole("tab", { name: /Spam Flashcards/ }).getAttribute("aria-selected")).toBe("true");
-      expect(router.replace).toHaveBeenLastCalledWith("/?tab=spam", { scroll: false });
+      expect(pushState).toHaveBeenLastCalledWith(null, "", "/?tab=spam");
       fireEvent.keyDown(screen.getByRole("tab", { name: /Spam Flashcards/ }), { key: "Home" });
       expect(summaryTab.getAttribute("aria-selected")).toBe("true");
-      expect(router.replace).toHaveBeenLastCalledWith("/", { scroll: false });
+      expect(pushState).toHaveBeenLastCalledWith(null, "", "/");
+      // Choosing the tab that is already open adds no history entry.
+      fireEvent.click(summaryTab);
+      expect(pushState).toHaveBeenCalledTimes(2);
+      pushState.mockRestore();
       fireEvent.keyDown(summaryTab, { key: "End" });
       fireEvent.keyDown(summaryTab, { key: "ArrowLeft" });
       fireEvent.keyDown(summaryTab, { key: "x" });
@@ -441,6 +453,27 @@ describe("Dashboard", () => {
       expect(actionCalls()).toEqual([]);
     });
 
+    it("the Delete confirmation says the email can also be restored from Gmail Trash, in every language", async () => {
+      mockApi({});
+      renderDashboard();
+      const [card] = await openSpamTab();
+      fireEvent.click(within(card).getByRole("button", { name: /Delete/ }));
+      expect(within(screen.getByRole("alertdialog")).getByText(/restore it from Gmail Trash for 30 days/)).toBeTruthy();
+      const { MESSAGES } = await import("@/lib/i18n");
+      expect(MESSAGES.es["confirm.body"]).toMatch(/recuperarlo de la papelera de Gmail durante 30 días/);
+      expect(MESSAGES.fr["confirm.body"]).toMatch(/récupérer dans la corbeille de Gmail pendant 30 jours/);
+    });
+
+    it("only the pressed button says it is working; the others are disabled but keep their labels", async () => {
+      mockApi({ actions: () => new Promise<Response>(() => {}) });
+      renderDashboard();
+      const [card] = await openSpamTab();
+      fireEvent.click(within(card).getByRole("button", { name: /Unsubscribe/ }));
+      const buttons = within(card).getAllByRole("button");
+      expect(buttons.map((b) => b.textContent)).toEqual(["Delete", "Working…", "Not spam"]);
+      expect(buttons.every((b) => b.hasAttribute("disabled"))).toBe(true);
+    });
+
     it("Delete moves the card to Trash, and Undo restores it", async () => {
       mockApi({});
       renderDashboard();
@@ -545,7 +578,7 @@ describe("Dashboard", () => {
       const [card] = await openSpamTab();
       expect(screen.getByText(/2 suspected spam emails/)).toBeTruthy();
       fireEvent.click(within(card).getByRole("button", { name: /Not spam/ }));
-      expect(await screen.findByText("Marked “50% off today” as not spam. It won't be flagged again.")).toBeTruthy();
+      expect(await screen.findByText("Marked “50% off today” as not spam. This email won't be flagged again; other emails from the sender still can be.")).toBeTruthy();
       await waitFor(() => expect(screen.getAllByRole("article")).toHaveLength(1));
       expect(screen.getByText(/1 suspected spam email$/)).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Undo" }));

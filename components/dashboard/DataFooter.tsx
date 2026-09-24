@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { CONTACT_EMAIL } from "@/content/legal";
 import { useI18n } from "../I18nProvider";
 
@@ -22,7 +23,7 @@ function dataRequestHref(kind: "copy" | "deletion", accountId: string, code: str
 export default function DataFooter({ accountId, dataRequestCode }: { accountId: string; dataRequestCode: string | null }) {
   const { t } = useI18n();
   return (
-    <footer className="mx-auto max-w-2xl px-4 pb-6 text-xs text-muted">
+    <footer className="mx-auto max-w-2xl px-4 pb-6 text-sm text-muted">
       <div className="flex flex-wrap items-center gap-x-4">
         <Link href="/terms" target="_blank" className="tap-h inline-flex items-center hover:text-foreground">
           {t("legal.terms")}
@@ -31,8 +32,11 @@ export default function DataFooter({ accountId, dataRequestCode }: { accountId: 
           {t("legal.privacy")}
         </Link>
       </div>
-      <details className="mt-1">
-        <summary className="tap-h inline-flex cursor-pointer items-center hover:text-foreground">{t("footer.yourData")}</summary>
+      <details className="group mt-1">
+        <summary className="tap-h inline-flex cursor-pointer list-none items-center [&::-webkit-details-marker]:hidden gap-1 hover:text-foreground">
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-90" strokeWidth={2} aria-hidden />
+          {t("footer.yourData")}
+        </summary>
         <p className="mt-1 leading-relaxed">
           {t("footer.accountId")} <span className="font-mono">{accountId}</span>. {t("footer.dataIntro")}{" "}
           <a href={dataRequestHref("copy", accountId, dataRequestCode)} className="underline hover:text-foreground">

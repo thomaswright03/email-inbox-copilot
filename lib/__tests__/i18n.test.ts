@@ -30,6 +30,17 @@ describe("createTranslator", () => {
     expect(fr("summary.count", { count: 0 })).toMatch(/^0 message /);
     expect(fr("summary.count", { count: 2 })).toMatch(/^2 messages /);
   });
+
+  it("writes numbers with each language's thousands separator", () => {
+    const vars = { count: 1234, shown: 100, total: 1234 };
+    expect(createTranslator("en", MESSAGES.en)("summary.count", vars)).toMatch(/^1,234 messages /);
+    expect(createTranslator("es", MESSAGES.es)("summary.count", vars)).toMatch(/^1\.234 mensajes /);
+    // French groups with a narrow no-break space.
+    expect(createTranslator("fr", MESSAGES.fr)("summary.count", vars)).toMatch(/^1\u202f234 messages /);
+    expect(createTranslator("en", MESSAGES.en)("summary.truncated", vars)).toBe(
+      "Showing the newest 100 of about 1,234 messages from the last 24 hours"
+    );
+  });
 });
 
 describe("matchLocale", () => {

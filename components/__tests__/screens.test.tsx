@@ -111,7 +111,8 @@ describe("Preferences", () => {
 
   it("the header menu opens, says the legal documents are English only, and closes on Escape or outside click", () => {
     renderWithProviders(<PreferencesMenu />);
-    const button = screen.getByRole("button", { name: "Language / Theme" });
+    const button = screen.getByRole("button", { name: "EN: Language / Theme" });
+    expect(button.textContent).toBe("en");
     fireEvent.click(button);
     expect(button.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText("The Terms and Privacy Policy are available in English only.")).toBeTruthy();

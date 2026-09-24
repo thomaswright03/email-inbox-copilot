@@ -56,6 +56,18 @@ test.describe("dashboard", () => {
     await expect(page.getByRole("tab", { name: /Spam Flashcards/ })).toHaveAttribute("aria-selected", "true");
   });
 
+  test("Back after switching tabs returns to the tab you came from", async ({ page, context }) => {
+    await signInAs(context);
+    await page.goto("/");
+    await page.getByRole("tab", { name: /Spam Flashcards/ }).click();
+    await expect(page).toHaveURL(/\?tab=spam$/);
+    await page.goBack();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("tab", { name: "Today's Mail" })).toHaveAttribute("aria-selected", "true");
+    await page.goForward();
+    await expect(page.getByRole("tab", { name: /Spam Flashcards/ })).toHaveAttribute("aria-selected", "true");
+  });
+
   test("rule-based flags give a sale the marketing reason and a digest the newsletter reason", async ({ page, context }) => {
     await signInAs(context);
     await page.goto("/?tab=spam");
@@ -88,7 +100,7 @@ test.describe("dashboard", () => {
     await expect(page.getByRole("article")).toHaveCount(2);
 
     await page.getByRole("article", { name: TOOLS }).getByRole("button", { name: "Not spam" }).click();
-    await expect(page.getByText("Marked “This week in tools” as not spam. It won't be flagged again.")).toBeVisible();
+    await expect(page.getByText("Marked “This week in tools” as not spam. This email won't be flagged again; other emails from the sender still can be.")).toBeVisible();
     await expect(page.getByRole("article")).toHaveCount(1);
 
     await page.reload();
@@ -245,3 +257,39 @@ test.describe("phone width (375 px)", () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 });
+
+// Card buttons keep their label on one line in every language and at every
+// common width, so "No es spam" never breaks as "No es / spam".
+for (const width of [375, 768, 1440, 2560]) {
+  test.describe(`card buttons at ${width} px`, () => {
+    test.use({ viewport: { width, height: 900 } });
+
+    for (const [lang, tab] of [
+      ["en", /Spam Flashcards/],
+      ["es", /Tarjetas de spam/],
+      ["fr", /Cartes de spam/],
+    ] as const) {
+      test(`stay on one line in ${lang}`, async ({ page, context }) => {
+        await signInAs(context);
+        await context.addCookies([{ name: "lang", value: lang, domain: "localhost", path: "/" }]);
+        await page.goto("/?tab=spam");
+        await expect(page.getByRole("tab", { name: tab }).first()).toHaveAttribute("aria-selected", "true");
+        await expect(page.getByRole("article")).toHaveCount(2);
+        const wrapped = await page.evaluate(() =>
+          [...document.querySelectorAll("article button, article a[href^='http']:not([aria-label])")]
+            .map((el) => {
+              // Every piece of the label (icon and text) sits on the same line.
+              const range = document.createRange();
+              range.selectNodeContents(el);
+              const rects = [...range.getClientRects()].filter((r) => r.width > 0);
+              const height = Math.max(...rects.map((r) => r.bottom)) - Math.min(...rects.map((r) => r.top));
+              const lineHeight = parseFloat(getComputedStyle(el).fontSize) * 1.6;
+              return { text: (el.textContent || "").trim(), lines: height > lineHeight ? 2 : 1, clipped: el.scrollWidth > el.clientWidth };
+            })
+            .filter((b) => b.lines > 1 || b.clipped)
+        );
+        expect(wrapped).toEqual([]);
+      });
+    }
+  });
+}

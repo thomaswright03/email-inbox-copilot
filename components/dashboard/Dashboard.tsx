@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { ShieldCheck } from "lucide-react";
 import { fetchJson } from "@/lib/client-fetch";
@@ -12,7 +12,7 @@ import DashboardHeader from "./DashboardHeader";
 import DataFooter from "./DataFooter";
 import Tabs, { panelId, tabId, type Tab } from "./Tabs";
 import SummaryPanel from "./SummaryPanel";
-import SpamCard, { type CardNotice } from "./SpamCard";
+import SpamCard, { type CardAction, type CardNotice } from "./SpamCard";
 import ConfirmDialog from "./ConfirmDialog";
 import Toast, { type ToastState } from "./Toast";
 import { ErrorState, recoveryFor, SkeletonCards, SlowNotice } from "./States";
@@ -48,27 +48,38 @@ export default function Dashboard({
   // summary.
   aiOn: boolean;
 }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
   const { t, locale } = useI18n();
   const inbox = useInbox(locale);
   const { cards, setCards } = inbox;
 
-  const [tab, setTabState] = useState<Tab>(searchParams.get("tab") === "spam" ? "spam" : "summary");
-  const [pendingId, setPendingId] = useState<string | null>(null);
+  // The tab lives in the URL (?tab=spam), and each switch is a history
+  // entry, so Back returns to the previous tab before it leaves the app.
+  // Local state answers a click at once; when the URL changes on its own
+  // (Back/Forward), the tab follows it.
+  const urlTab: Tab = searchParams.get("tab") === "spam" ? "spam" : "summary";
+  const [tab, setTabState] = useState<Tab>(urlTab);
+  const [seenUrlTab, setSeenUrlTab] = useState<Tab>(urlTab);
+  if (urlTab !== seenUrlTab) {
+    setSeenUrlTab(urlTab);
+    setTabState(urlTab);
+  }
+  const [pending, setPending] = useState<{ id: string; action: CardAction } | null>(null);
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
   const [notices, setNotices] = useState<Record<string, CardNotice>>({});
   const [confirming, setConfirming] = useState<SpamCardPayload | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
 
   function setTab(next: Tab) {
+    if (next === tab) return;
     setTabState(next);
     const params = new URLSearchParams(searchParams.toString());
     if (next === "summary") params.delete("tab");
     else params.set("tab", next);
     const query = params.toString();
-    router.replace(query ? `/?${query}` : "/", { scroll: false });
+    // Next.js syncs useSearchParams with the native History API.
+    window.history.pushState(null, "", query ? `/?${query}` : "/");
   }
 
   useEffect(() => {
@@ -122,9 +133,9 @@ export default function Dashboard({
     showToast({ tone: "success", message: t("toast.undone") });
   }
 
-  async function runAction(action: "delete" | "unsubscribe" | "ignore", card: SpamCardPayload) {
+  async function runAction(action: CardAction, card: SpamCardPayload) {
     setNotice(card.id, null);
-    setPendingId(card.id);
+    setPending({ id: card.id, action });
     try {
       const result = await postAction(action, card.id);
       if (!result.ok) {
@@ -161,7 +172,7 @@ export default function Dashboard({
         showToast({ tone: "warning", message: t("toast.unsubscribedNotArchived", { name }) });
       }
     } finally {
-      setPendingId(null);
+      setPending(null);
     }
   }
 
@@ -203,7 +214,7 @@ export default function Dashboard({
                   when there are none (unless the AI budget ran out, which
                   the user needs to know either way). */}
               {(cards.length > 0 || inbox.spam.data.aiStatus === "budget") && (
-                <p className="mb-3 text-xs text-muted">
+                <p className="mb-3 text-sm text-muted">
                   {t(`spam.ai.${inbox.spam.data.aiStatus}`, { time: resetTime(inbox.spam.data.aiResetsAt) })}
                 </p>
               )}
@@ -229,13 +240,14 @@ export default function Dashboard({
                 </div>
               )}
               {cards.length > 0 ? (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3">
                   {cards.map((card) => (
                     <SpamCard
                       key={card.id}
                       card={card}
                       accountEmail={userEmail}
-                      pending={pendingId === card.id}
+                      pending={pending?.id === card.id}
+                      pendingAction={pending?.id === card.id ? pending.action : null}
                       removing={removingIds.has(card.id)}
                       notice={notices[card.id] ?? null}
                       onDelete={() => setConfirming(card)}

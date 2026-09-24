@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import BrandHeader from "@/components/BrandHeader";
 import { getTranslator } from "@/lib/i18n/server";
+
+// The tab names the problem ("Page not found · Inbox Buddy"), translated.
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getTranslator();
+  return { title: `${t("notFound.title")} · ${t("app.name")}` };
+}
 
 export default async function NotFound() {
   const { t } = await getTranslator();
