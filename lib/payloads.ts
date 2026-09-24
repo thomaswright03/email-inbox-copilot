@@ -1,4 +1,5 @@
 // Response shapes of the dashboard's API routes, shared with the client.
+import type { BriefingItem } from "./ai";
 import type { RuleGroups } from "./rules";
 import type { SpamReason } from "./spam-reasons";
 
@@ -13,10 +14,10 @@ export type TodayPayload = {
   aiStatus: AiStatus;
   // When the daily AI budget resets (ISO time), with aiStatus "budget".
   aiResetsAt?: string;
-  summary: string | null;
-  // The AI summary stopped at its length limit and may leave out the last
-  // items (lib/ai.ts summarizeToday); the dashboard says so.
-  summaryIncomplete?: boolean;
+  // The Actionable Briefing (lib/ai.ts summarizeToday): one item per email
+  // still in the inbox, newest first. null when it wasn't written; `groups`
+  // is the rule-based view then.
+  briefing: BriefingItem[] | null;
   groups: RuleGroups | null;
   generatedAt: string;
   count: number;
@@ -55,7 +56,7 @@ export type SpamPayload = {
   aiResetsAt?: string;
 };
 
-export type ActionName = "delete" | "unsubscribe" | "ignore" | "undo_delete" | "undo_archive" | "undo_ignore";
+export type ActionName = "delete" | "unsubscribe" | "ignore" | "done" | "undo_delete" | "undo_archive" | "undo_ignore";
 
 export type ActionResult =
   | { ok: true; archived?: boolean; warning?: "archive_failed" }

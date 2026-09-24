@@ -46,12 +46,18 @@ describe("Gemini calls", () => {
 
   it("logs feature, model, tokens, latency and outcome for each call, without email content", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
-    generateContent.mockResolvedValue({ text: "- One thing matters", usageMetadata: { promptTokenCount: 120, candidatesTokenCount: 9 } });
+    generateContent.mockResolvedValue({
+      text: '{"items":[{"id":"e1","bucket":"fyi","action":"One thing matters","due":""}]}',
+      usageMetadata: { promptTokenCount: 120, candidatesTokenCount: 9 },
+    });
 
-    expect(await summarizeToday([EMAIL], "fr")).toEqual({ text: "- One thing matters", incomplete: false });
+    expect(await summarizeToday([EMAIL], "fr")).toEqual([{ id: "m1", bucket: "fyi", action: "One thing matters", due: "" }]);
     expect(constructed).toHaveBeenCalledTimes(1);
-    expect(generateContent.mock.calls[0][0]).toMatchObject({ model: MODEL });
-    expect(generateContent.mock.calls[0][0].contents).toContain("Write the summary in French");
+    expect(generateContent.mock.calls[0][0]).toMatchObject({
+      model: MODEL,
+      config: { responseMimeType: "application/json", responseJsonSchema: expect.any(Object) },
+    });
+    expect(generateContent.mock.calls[0][0].contents).toContain("in French");
 
     const [line] = usageLines(info);
     expect(line).toMatchObject({ feature: "summary", model: MODEL, outcome: "ok", inputTokens: 120, outputTokens: 9 });
@@ -60,20 +66,14 @@ describe("Gemini calls", () => {
     info.mockRestore();
   });
 
-  it("a summary that stopped at the output limit is flagged incomplete, without its unfinished last line", async () => {
+  it("a briefing cut off at the output limit is discarded, like any malformed answer", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
     generateContent.mockResolvedValueOnce({
-      text: "- Ana needs the contract by Friday\n- Your invoice is due\n- The team off",
+      text: '{"items":[{"id":"e1","bucket":"reply","action":"Ana needs the contract',
       candidates: [{ finishReason: "MAX_TOKENS" }],
     });
-    expect(await summarizeToday([EMAIL])).toEqual({
-      text: "- Ana needs the contract by Friday\n- Your invoice is due",
-      incomplete: true,
-    });
-    expect(usageLines(info).at(-1)).toMatchObject({ feature: "summary", outcome: "truncated" });
-
-    generateContent.mockResolvedValueOnce({ text: "- All done", candidates: [{ finishReason: "STOP" }] });
-    expect(await summarizeToday([EMAIL])).toEqual({ text: "- All done", incomplete: false });
+    expect(await summarizeToday([EMAIL])).toBeNull();
+    expect(usageLines(info).map((l) => l.outcome)).toEqual(["truncated", "discarded"]);
     info.mockRestore();
   });
 

@@ -25,7 +25,7 @@ test.describe("dashboard", () => {
     await signInAs(context);
     await page.goto("/");
 
-    await expect(page.getByText("3 messages in the last 24 hours")).toBeVisible();
+    await expect(page.getByText("3 messages today")).toBeVisible();
     await expect(page.getByText(/^Updated \d/)).toBeVisible();
     await expect(page.getByText(/AI features are off/)).toBeVisible();
     await expect(page.getByRole("heading", { name: "Messages to check (1)" })).toBeVisible();
@@ -175,7 +175,7 @@ test.describe("dashboard", () => {
     await expect(alert).toBeVisible({ timeout: 25_000 });
     await page.unroute("**/api/emails/today**");
     await alert.getByRole("button", { name: "Try again" }).click();
-    await expect(page.getByText("3 messages in the last 24 hours")).toBeVisible();
+    await expect(page.getByText("3 messages today")).toBeVisible();
   });
 
   for (const [name, fail] of [
@@ -227,7 +227,7 @@ test.describe("dashboard", () => {
     await context.addCookies([{ name: "lang", value: "es", domain: "localhost", path: "/" }]);
     await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("lang", "es");
-    await expect(page.getByText("3 mensajes en las últimas 24 horas")).toBeVisible();
+    await expect(page.getByText("3 mensajes hoy")).toBeVisible();
     await page.getByRole("tab", { name: /Tarjetas de spam/ }).click();
     await expect(page.getByRole("button", { name: "No es spam" })).toHaveCount(2);
   });

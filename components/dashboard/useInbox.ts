@@ -5,6 +5,15 @@ import { fetchJson } from "@/lib/client-fetch";
 import type { Locale } from "@/lib/i18n/config";
 import type { SpamCardPayload, SpamPayload, TodayPayload } from "@/lib/payloads";
 
+// The browser's time zone, so "today" is the user's own day (lib/local-day.ts).
+function timeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
 export type LoadState<T> = { status: "loading" } | { status: "error"; code: string } | { status: "ready"; data: T };
 
 // Loads the summary and spam list, and reloads them on demand (Refresh
@@ -20,7 +29,7 @@ export function useInbox(locale: Locale) {
   const loadToday = useCallback(
     async (refresh = false) => {
       const run = ++latest.current.today;
-      const query = new URLSearchParams({ lang: locale, ...(refresh ? { refresh: "1" } : {}) });
+      const query = new URLSearchParams({ lang: locale, tz: timeZone(), ...(refresh ? { refresh: "1" } : {}) });
       const result = await fetchJson<TodayPayload>(`/api/emails/today?${query}`);
       if (run !== latest.current.today) return;
       setToday(result.ok ? { status: "ready", data: result.data } : { status: "error", code: result.code });
@@ -30,7 +39,8 @@ export function useInbox(locale: Locale) {
 
   const loadSpam = useCallback(async (refresh = false) => {
     const run = ++latest.current.spam;
-    const result = await fetchJson<SpamPayload>(`/api/emails/spam${refresh ? "?refresh=1" : ""}`);
+    const query = new URLSearchParams({ tz: timeZone(), ...(refresh ? { refresh: "1" } : {}) });
+    const result = await fetchJson<SpamPayload>(`/api/emails/spam?${query}`);
     if (run !== latest.current.spam) return;
     if (result.ok) {
       setSpam({ status: "ready", data: result.data });

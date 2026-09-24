@@ -37,8 +37,9 @@ describe(`${MODEL} against the golden sets`, () => {
   it("summarizes what matters, in the right language, without links or injected text", async () => {
     const summaries = new Map<string, string | null>();
     for (const f of SUMMARY_FIXTURES) {
-      const summary = await summarizeToday(f.emails.map((e, i) => toParsedEmail(e, `${f.id}-${i}`)), f.language);
-      summaries.set(f.id, summary?.text ?? null);
+      const briefing = await summarizeToday(f.emails.map((e, i) => toParsedEmail(e, `${f.id}-${i}`)), f.language);
+      // Scored on the model's own words: each item's action line and date.
+      summaries.set(f.id, briefing ? briefing.map((item) => `${item.action} ${item.due}`).join("\n") : null);
     }
     const score = scoreSummaries(SUMMARY_FIXTURES, summaries);
     console.log(

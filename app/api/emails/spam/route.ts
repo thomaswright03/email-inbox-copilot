@@ -9,6 +9,7 @@ import { enforceRateLimit, RATE_LIMITS, RateLimitError, reserveAiCalls } from "@
 import { cachedVerdicts, rememberVerdicts } from "@/lib/verdict-cache";
 import { isQuotaError, logError, logSecurityEvent } from "@/lib/log";
 import { INBOX_CACHE_TTL_MS, maybeRefresh, readInbox } from "@/lib/inbox";
+import { localDayFrom, type LocalDay } from "@/lib/local-day";
 import { ignoredMessageIds } from "@/lib/ignored";
 import { gmailComposeUrl, unsubscribeMethod } from "@/lib/unsubscribe";
 import type { AiStatus, CardUnsubscribe, SpamPayload } from "@/lib/payloads";
@@ -85,8 +86,8 @@ async function aiVerdicts(userId: string, emails: ParsedEmail[]): Promise<AiVerd
   };
 }
 
-async function buildSpamPayload(accessToken: string, userId: string): Promise<SpamPayload> {
-  const { emails } = await readInbox(accessToken, userId, "spam");
+async function buildSpamPayload(accessToken: string, userId: string, day: LocalDay): Promise<SpamPayload> {
+  const { emails } = await readInbox(accessToken, userId, day, "spam");
 
   let ai: AiVerdicts = { aiStatus: aiEnabled() ? "generated" : "off", verdicts: null, unchecked: 0 };
   if (ai.aiStatus === "generated") ai = await aiVerdicts(userId, emails);
@@ -126,12 +127,13 @@ export async function GET(req: Request) {
   const session = await requireSession(req);
   if (session instanceof NextResponse) return session;
 
+  const day = localDayFrom(req);
   try {
     await enforceRateLimit(RATE_LIMITS.inboxReads, session.userId);
-    await maybeRefresh(req, session.userId, "spam");
+    await maybeRefresh(req, session.userId, day, "spam");
     const [payload, ignored] = await Promise.all([
-      getOrSetCached(userCacheKey("spam", session.userId), INBOX_CACHE_TTL_MS, () =>
-        buildSpamPayload(session.accessToken, session.userId)
+      getOrSetCached(userCacheKey("spam", session.userId, day), INBOX_CACHE_TTL_MS, () =>
+        buildSpamPayload(session.accessToken, session.userId, day)
       ),
       ignoredMessageIds(session.userId),
     ]);

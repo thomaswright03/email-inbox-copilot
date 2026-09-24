@@ -19,6 +19,8 @@ import type { SpamCardPayload, SpamPayload, TodayPayload } from "@/lib/payloads"
 import { htmlError, json, renderWithProviders } from "@/components/__tests__/test-utils";
 
 const GENERATED_AT = "2026-09-24T10:42:00.000Z";
+// The browser's time zone, sent as ?tz= so "today" is the user's own day.
+const TZ = new URLSearchParams({ tz: Intl.DateTimeFormat().resolvedOptions().timeZone }).toString();
 
 const EMAILS: TodayPayload["emails"] = [
   { id: "m1", threadId: "t1", from: "Ana Ruiz <ana@example.com>", subject: "Contract review", date: "Thu, 24 Sep 2026 09:15:00 +0000" },
@@ -28,7 +30,7 @@ const EMAILS: TodayPayload["emails"] = [
 function today(overrides: Partial<TodayPayload> = {}): TodayPayload {
   return {
     aiStatus: "off",
-    summary: null,
+    briefing: null,
     groups: { toCheck: ["m1"], bulk: ["m2"] },
     generatedAt: GENERATED_AT,
     count: 2,
@@ -138,7 +140,7 @@ describe("Dashboard", () => {
     it("shows the count, the time it was updated, and each message with a Gmail link", async () => {
       mockApi({});
       renderDashboard();
-      expect(await screen.findByText("2 messages in the last 24 hours")).toBeTruthy();
+      expect(await screen.findByText("2 messages today")).toBeTruthy();
       expect(screen.getByText(/^Updated /)).toBeTruthy();
       expect(screen.getByText("Likely promotional or bulk (1)")).toBeTruthy();
       const link = screen.getByRole("link", { name: "Open “Contract review” in Gmail" });
@@ -159,7 +161,7 @@ describe("Dashboard", () => {
     it("shows the whole sender and subject of a row on hover", async () => {
       mockApi({});
       renderDashboard();
-      await screen.findByText("2 messages in the last 24 hours");
+      await screen.findByText("2 messages today");
       const link = screen.getByRole("link", { name: "Open “Contract review” in Gmail" });
       expect(link.closest("li")?.querySelector("p")?.getAttribute("title")).toBe("Ana Ruiz · Contract review");
     });
@@ -167,52 +169,79 @@ describe("Dashboard", () => {
     it("uses the singular for one message", async () => {
       mockApi({ today: () => json(today({ count: 1, totalEstimate: 1, emails: [EMAILS[0]], groups: { toCheck: ["m1"], bulk: [] } })) });
       renderDashboard();
-      expect(await screen.findByText("1 message in the last 24 hours")).toBeTruthy();
+      expect(await screen.findByText("1 message today")).toBeTruthy();
     });
 
     it("says when the inbox had more messages than were read", async () => {
       mockApi({ today: () => json(today({ truncated: true, count: 100, totalEstimate: 173 })) });
       renderDashboard();
-      expect(await screen.findByText("Showing the newest 100 of about 173 messages from the last 24 hours")).toBeTruthy();
+      expect(await screen.findByText("Showing the newest 100 of about 173 messages from today")).toBeTruthy();
     });
 
     it("shows an empty state when nothing arrived", async () => {
       mockApi({ today: () => json(today({ count: 0, totalEstimate: 0, emails: [], groups: { toCheck: [], bulk: [] } })) });
       renderDashboard();
-      expect(await screen.findByText("No messages in the last 24 hours.")).toBeTruthy();
+      expect(await screen.findByText("No messages today yet.")).toBeTruthy();
     });
 
-    it("renders an AI summary without links or images, with the full message list behind a toggle", async () => {
+    it("renders the AI briefing in buckets with header counts, plain text only, and the full message list behind a toggle", async () => {
       mockApi({
         today: () =>
           json(
             today({
               aiStatus: "generated",
-              summary: "**Important**\n\n- Review the [contract](https://evil.example) ![x](https://evil.example/x.png)",
+              briefing: [
+                { id: "m1", bucket: "reply", action: "Ana wants comments on the [contract](https://evil.example)", due: "Thu" },
+                { id: "m2", bucket: "noise", action: "", due: "" },
+              ],
               groups: null,
             })
           ),
       });
       renderDashboard();
-      expect(await screen.findByText("Important")).toBeTruthy();
-      expect(screen.getByText(/AI-generated summary/)).toBeTruthy();
+      expect(await screen.findByText("Needs a reply (1)")).toBeTruthy();
+      expect(screen.getByText(/1 needs a reply/)).toBeTruthy();
+      // Model text is shown as text: never a link, image or markup.
+      expect(screen.getByText("Ana wants comments on the [contract](https://evil.example)")).toBeTruthy();
       expect(document.querySelector('a[href="https://evil.example"]')).toBeNull();
-      expect(document.querySelector("img")).toBeNull();
+      expect(screen.getByText("Thu")).toBeTruthy();
+      // Noise is collapsed, and left out of the header counts.
+      expect(screen.getByText("Noise (1)").closest("details")?.open).toBe(false);
+      expect(screen.queryByText(/FYI/)).toBeNull();
+      expect(screen.getByText(/AI-generated summary/)).toBeTruthy();
       expect(screen.getByText("All messages (2)")).toBeTruthy();
     });
 
-    it("marks a summary that was cut short, and only that one", async () => {
-      mockApi({ today: () => json(today({ aiStatus: "generated", summary: "- First point", summaryIncomplete: true, groups: null })) });
+    it("Done archives the item, hides it, and Undo brings it back", async () => {
+      mockApi({
+        today: () =>
+          json(today({ aiStatus: "generated", briefing: [{ id: "m1", bucket: "reply", action: "Reply to Ana", due: "" }], groups: null })),
+      });
       renderDashboard();
-      expect(await screen.findByText("First point")).toBeTruthy();
-      expect(screen.getByText(/This summary was cut short/)).toBeTruthy();
+      fireEvent.click(await screen.findByRole("button", { name: "Mark “Contract review” done and archive it" }));
+      expect(await screen.findByText("Archived “Contract review”.")).toBeTruthy();
+      expect(screen.queryByText("Reply to Ana")).toBeNull();
+      expect(screen.getByText(/You're all caught up/)).toBeTruthy();
+
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+      expect(await screen.findByText("Reply to Ana")).toBeTruthy();
+      expect(actionCalls()).toEqual([
+        { action: "done", messageId: "m1" },
+        { action: "undo_archive", messageId: "m1" },
+      ]);
     });
 
-    it("does not mark a complete summary", async () => {
-      mockApi({ today: () => json(today({ aiStatus: "generated", summary: "- First point", groups: null })) });
+    it("keeps an item whose Done failed, and says why", async () => {
+      mockApi({
+        today: () =>
+          json(today({ aiStatus: "generated", briefing: [{ id: "m1", bucket: "fyi", action: "Contract notes", due: "" }], groups: null })),
+        actions: () => json({ ok: false, code: "action_failed", error: "x" }, 502),
+      });
       renderDashboard();
-      expect(await screen.findByText("First point")).toBeTruthy();
-      expect(screen.queryByText(/cut short/)).toBeNull();
+      fireEvent.click(await screen.findByRole("button", { name: "Mark “Contract review” done and archive it" }));
+      await waitFor(() => expect(screen.getByRole("button", { name: /done and archive it/ }).hasAttribute("disabled")).toBe(false));
+      expect(screen.getByText("Contract notes")).toBeTruthy();
+      expect(screen.queryByText(/Archived/)).toBeNull();
     });
 
     it("says when today's AI budget is used up and when AI summaries come back", async () => {
@@ -233,12 +262,12 @@ describe("Dashboard", () => {
     it("Refresh re-requests both lists, bypassing the cache", async () => {
       mockApi({});
       renderDashboard();
-      await screen.findByText("2 messages in the last 24 hours");
+      await screen.findByText("2 messages today");
       fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
       await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).toBeTruthy());
       const urls = fetchMock.mock.calls.map(([u]) => String(u));
-      expect(urls).toContain("/api/emails/today?lang=en&refresh=1");
-      expect(urls).toContain("/api/emails/spam?refresh=1");
+      expect(urls).toContain(`/api/emails/today?lang=en&${TZ}&refresh=1`);
+      expect(urls).toContain(`/api/emails/spam?${TZ}&refresh=1`);
     });
 
     it("shows a plain sentence, not parser text, when the server answers with an HTML error page", async () => {
@@ -260,7 +289,7 @@ describe("Dashboard", () => {
       renderDashboard();
       expect(await screen.findByText("Couldn't reach Inbox Buddy. Check your connection and try again.")).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-      expect(await screen.findByText("2 messages in the last 24 hours")).toBeTruthy();
+      expect(await screen.findByText("2 messages today")).toBeTruthy();
     });
 
     it("says a slow load is taking longer than usual, then stops waiting and offers Try again", async () => {
@@ -279,7 +308,7 @@ describe("Dashboard", () => {
       expect(screen.getByText("Inbox Buddy is taking too long to answer. Check your connection and try again.")).toBeTruthy();
       vi.useRealTimers();
       fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-      expect(await screen.findByText("2 messages in the last 24 hours")).toBeTruthy();
+      expect(await screen.findByText("2 messages today")).toBeTruthy();
     });
 
     it("offers Reconnect Gmail when Gmail access was revoked", async () => {
@@ -371,7 +400,7 @@ describe("Dashboard", () => {
       fireEvent.click(screen.getByRole("tab", { name: /Spam Flashcards/ }));
       expect(screen.getByRole("tabpanel").querySelector('[aria-busy="true"]')).not.toBeNull();
       await act(async () => resolve(json(spam([], "generated"))));
-      expect(await screen.findByText("No suspected spam in your inbox from the last 24 hours.")).toBeTruthy();
+      expect(await screen.findByText("No suspected spam in your inbox from today.")).toBeTruthy();
       // The "Flagged by…" caption describes cards, so it isn't shown without any.
       expect(screen.queryByText(/Flagged by/)).toBeNull();
     });
@@ -390,7 +419,7 @@ describe("Dashboard", () => {
       expect(screen.getByText("5 more possible spam emails haven't been checked yet.")).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Check now" }));
       await waitFor(() => expect(screen.queryByText(/haven't been checked yet/)).toBeNull());
-      expect(fetchMock.mock.calls.map(([u]) => String(u))).toContain("/api/emails/spam?refresh=1");
+      expect(fetchMock.mock.calls.map(([u]) => String(u))).toContain(`/api/emails/spam?${TZ}&refresh=1`);
     });
 
     it("when today's AI budget is used up, says so and when it comes back", async () => {
@@ -578,7 +607,7 @@ describe("Dashboard", () => {
       expect(await screen.findByText("This email is no longer in your inbox. It may have been deleted or moved in Gmail.")).toBeTruthy();
       await waitFor(() => expect(screen.queryAllByRole("article")).toHaveLength(0));
       expect(within(card).queryByRole("alert")).toBeNull();
-      expect(fetchMock.mock.calls.map(([u]) => String(u))).toContain("/api/emails/spam?refresh=1");
+      expect(fetchMock.mock.calls.map(([u]) => String(u))).toContain(`/api/emails/spam?${TZ}&refresh=1`);
     });
 
     it("a revoked Gmail grant during an action offers Reconnect Gmail on the card", async () => {
@@ -653,6 +682,6 @@ describe("Dashboard", () => {
     const copy = screen.getByRole("link", { name: "request a copy" }).getAttribute("href") ?? "";
     expect(copy.startsWith("mailto:")).toBe(true);
     expect(decodeURIComponent(copy)).toContain("Request code: code-1");
-    await screen.findByText("2 messages in the last 24 hours");
+    await screen.findByText("2 messages today");
   });
 });

@@ -25,7 +25,8 @@ export type InboxWindow = {
   totalEstimate: number;
 };
 
-// A rolling 24-hour window, newest first, up to this many messages.
+// The user's local day so far (lib/local-day.ts), newest first, up to this
+// many messages.
 export const MAX_MESSAGES = 100;
 const PAGE_SIZE = 100;
 const GET_CONCURRENCY = 10;
@@ -67,7 +68,7 @@ export function isGmailAuthError(err: unknown): boolean {
 }
 
 // Every Gmail call is bounded: one request may take GMAIL_CALL_TIMEOUT_MS,
-// and reading the whole 24-hour window GMAIL_READ_DEADLINE_MS, so a hung
+// and reading the whole day's window GMAIL_READ_DEADLINE_MS, so a hung
 // Gmail becomes "Couldn't reach Gmail" well before the dashboard gives up
 // waiting (lib/client-fetch.ts).
 export const GMAIL_CALL_TIMEOUT_MS = 6_000;
@@ -110,12 +111,16 @@ export function isInInbox(labelIds: string[]): boolean {
   return labelIds.includes("INBOX") && !labelIds.includes("SPAM");
 }
 
-// The dashboard covers mail the user *received* in the last 24 hours:
-// anything they wrote (Sent, including notes to self, and Drafts) and Chat
-// messages are left out. Received mail they already archived still counts,
-// because it arrived that day (README "Which mail counts"). Gmail search
-// already skips Spam and Trash.
-const RECENT_MAIL_QUERY = "newer_than:1d -in:sent -in:drafts -in:chats";
+// The dashboard covers mail the user *received* today, since their local
+// midnight (`after:` takes Unix seconds): anything they wrote (Sent,
+// including notes to self, and Drafts) and Chat messages are left out.
+// Received mail they already archived still counts toward the day's list,
+// because it arrived that day, but only mail still in the inbox is sorted
+// into the briefing (README "Which mail counts"). Gmail search already
+// skips Spam and Trash.
+export function todaysMailQuery(sinceSeconds: number): string {
+  return `after:${Math.floor(sinceSeconds)} -in:sent -in:drafts -in:chats`;
+}
 const NOT_RECEIVED_LABELS = ["SENT", "DRAFT", "CHAT"];
 
 // Belt and braces on top of the query: a message the list returns anyway
@@ -155,7 +160,7 @@ async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => P
   return out;
 }
 
-export async function fetchRecentMessages(accessToken: string): Promise<InboxWindow> {
+export async function fetchRecentMessages(accessToken: string, sinceSeconds: number): Promise<InboxWindow> {
   const gmail = getGmailClient(accessToken);
   const deadline = deadlineSignal(GMAIL_READ_DEADLINE_MS);
 
@@ -165,7 +170,7 @@ export async function fetchRecentMessages(accessToken: string): Promise<InboxWin
   let truncated = false;
   do {
     const list = await gmailRead(
-      (options) => gmail.users.messages.list({ userId: "me", q: RECENT_MAIL_QUERY, maxResults: PAGE_SIZE, pageToken }, options),
+      (options) => gmail.users.messages.list({ userId: "me", q: todaysMailQuery(sinceSeconds), maxResults: PAGE_SIZE, pageToken }, options),
       deadline
     );
     totalEstimate = Math.max(totalEstimate, list.data.resultSizeEstimate ?? 0);
@@ -235,7 +240,7 @@ export async function archiveMessage(accessToken: string, messageId: string): Pr
   );
 }
 
-// Undo for the archive step of Unsubscribe (the unsubscribe itself can't be undone).
+// Undo for Done, and for the archive step of Unsubscribe (the unsubscribe itself can't be undone).
 export async function unarchiveMessage(accessToken: string, messageId: string): Promise<void> {
   const gmail = getGmailClient(accessToken);
   await gmailWrite((options) =>

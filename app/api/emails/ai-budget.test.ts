@@ -54,7 +54,7 @@ describe("when today's AI budget runs out", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
     signIn();
-    vi.mocked(summarizeToday).mockResolvedValue({ text: "**Summary**", incomplete: false });
+    vi.mocked(summarizeToday).mockResolvedValue([{ id: "m1", bucket: "fyi", action: "", due: "" }]);
     vi.mocked(classifyCandidates).mockImplementation(async (candidates) => ({
       verdicts: candidates.map((e) => ({ id: e.id, isSpam: true, reason: "marketing" as const })),
       checkedIds: candidates.map((e) => e.id),
@@ -72,7 +72,7 @@ describe("when today's AI budget runs out", () => {
     const res = await getToday(new Request("http://localhost/api/emails/today?refresh=1"));
     const body = await res.json();
     expect(res.status).toBe(200);
-    expect(body).toMatchObject({ aiStatus: "budget", aiResetsAt: nextUtcMidnight(), summary: null });
+    expect(body).toMatchObject({ aiStatus: "budget", aiResetsAt: nextUtcMidnight(), briefing: null });
     expect(body.groups).not.toBeNull();
     expect(summarizeToday).toHaveBeenCalledTimes(3);
   });

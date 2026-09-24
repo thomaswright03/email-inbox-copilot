@@ -57,18 +57,21 @@ function ids(prefix: string, n: number) {
   return Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i}` }));
 }
 
+// 2026-09-24 00:00 in Los Angeles.
+const SINCE = 1790233200;
+
 describe("fetchRecentMessages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     api.get.mockImplementation(async ({ id }: { id: string }) => metadata(id));
   });
 
-  it("reads the last 24 hours as metadata only, never message bodies", async () => {
+  it("reads the user's day since local midnight as metadata only, never message bodies", async () => {
     api.list.mockResolvedValue({ data: { messages: ids("m", 2), resultSizeEstimate: 2 } });
-    const result = await fetchRecentMessages("tok");
+    const result = await fetchRecentMessages("tok", SINCE);
 
     expect(api.list).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "me", q: "newer_than:1d -in:sent -in:drafts -in:chats" }),
+      expect.objectContaining({ userId: "me", q: `after:${SINCE} -in:sent -in:drafts -in:chats` }),
       { signal: expect.any(AbortSignal) }
     );
     for (const [args] of api.get.mock.calls) {
@@ -93,7 +96,7 @@ describe("fetchRecentMessages", () => {
     };
     api.get.mockImplementation(async ({ id }: { id: string }) => metadata(id, { labels: labels[id] }));
 
-    const result = await fetchRecentMessages("tok");
+    const result = await fetchRecentMessages("tok", SINCE);
 
     expect(api.list.mock.calls[0][0].q).toMatch(/-in:sent/);
     expect(api.list.mock.calls[0][0].q).toMatch(/-in:drafts/);
@@ -107,7 +110,7 @@ describe("fetchRecentMessages", () => {
   it("keeps received mail the user already archived (no INBOX label)", async () => {
     api.list.mockResolvedValue({ data: { messages: ids("m", 1), resultSizeEstimate: 1 } });
     api.get.mockImplementation(async ({ id }: { id: string }) => metadata(id, { labels: ["CATEGORY_UPDATES"] }));
-    const result = await fetchRecentMessages("tok");
+    const result = await fetchRecentMessages("tok", SINCE);
     expect(result.emails).toHaveLength(1);
     expect(result.emails[0].isInInbox).toBe(false);
   });
@@ -118,7 +121,7 @@ describe("fetchRecentMessages", () => {
       if (id === "m1") throw httpError(404, "Requested entity was not found.");
       return metadata(id);
     });
-    const result = await fetchRecentMessages("tok");
+    const result = await fetchRecentMessages("tok", SINCE);
     expect(result.emails.map((e) => e.id)).toEqual(["m0", "m2"]);
   });
 
@@ -126,7 +129,7 @@ describe("fetchRecentMessages", () => {
     api.list
       .mockResolvedValueOnce({ data: { messages: ids("a", 40), nextPageToken: "p2", resultSizeEstimate: 70 } })
       .mockResolvedValueOnce({ data: { messages: ids("b", 30), resultSizeEstimate: 70 } });
-    const result = await fetchRecentMessages("tok");
+    const result = await fetchRecentMessages("tok", SINCE);
 
     expect(api.list).toHaveBeenCalledTimes(2);
     expect(api.list.mock.calls[1][0].pageToken).toBe("p2");
@@ -136,7 +139,7 @@ describe("fetchRecentMessages", () => {
 
   it("stops at the limit and says the list was truncated", async () => {
     api.list.mockResolvedValueOnce({ data: { messages: ids("a", 100), nextPageToken: "more", resultSizeEstimate: 173 } });
-    const result = await fetchRecentMessages("tok");
+    const result = await fetchRecentMessages("tok", SINCE);
 
     expect(api.list).toHaveBeenCalledTimes(1);
     expect(api.get).toHaveBeenCalledTimes(MAX_MESSAGES);
@@ -146,29 +149,29 @@ describe("fetchRecentMessages", () => {
 
   it("handles an empty inbox", async () => {
     api.list.mockResolvedValue({ data: {} });
-    expect(await fetchRecentMessages("tok")).toEqual({ emails: [], truncated: false, totalEstimate: 0 });
+    expect(await fetchRecentMessages("tok", SINCE)).toEqual({ emails: [], truncated: false, totalEstimate: 0 });
   });
 
   it("retries a transient Gmail failure (503) and succeeds", async () => {
     api.list.mockRejectedValueOnce(httpError(503)).mockResolvedValueOnce({ data: { messages: ids("m", 1) } });
     api.get.mockRejectedValueOnce(httpError(429)).mockImplementation(async ({ id }: { id: string }) => metadata(id));
-    const result = await fetchRecentMessages("tok");
+    const result = await fetchRecentMessages("tok", SINCE);
     expect(api.list).toHaveBeenCalledTimes(2);
     expect(result.emails).toHaveLength(1);
   });
 
   it("does not retry a revoked grant; it becomes a GmailAuthError", async () => {
     api.list.mockRejectedValue(httpError(401, "Invalid Credentials"));
-    await expect(fetchRecentMessages("tok")).rejects.toBeInstanceOf(GmailAuthError);
+    await expect(fetchRecentMessages("tok", SINCE)).rejects.toBeInstanceOf(GmailAuthError);
     expect(api.list).toHaveBeenCalledTimes(1);
   });
 
   it("points at a stand-in Gmail API only when GMAIL_API_ROOT_URL is set", async () => {
     api.list.mockResolvedValue({ data: {} });
-    await fetchRecentMessages("tok");
+    await fetchRecentMessages("tok", SINCE);
     expect(gmailFactory).toHaveBeenLastCalledWith(expect.not.objectContaining({ rootUrl: expect.anything() }));
     vi.stubEnv("GMAIL_API_ROOT_URL", "http://127.0.0.1:9999/");
-    await fetchRecentMessages("tok");
+    await fetchRecentMessages("tok", SINCE);
     expect(gmailFactory).toHaveBeenLastCalledWith(expect.objectContaining({ rootUrl: "http://127.0.0.1:9999/" }));
     vi.unstubAllEnvs();
   });

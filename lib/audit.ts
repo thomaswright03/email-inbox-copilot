@@ -5,6 +5,7 @@ export type AuditAction =
   | "delete"
   | "unsubscribe"
   | "ignore"
+  | "done"
   | "classified_spam"
   | "sign_in"
   | "sign_in_rejected"

@@ -61,13 +61,13 @@ export const es: Messages = {
   "tabs.spamCount_one": "{count} correo sospechoso de spam",
   "tabs.spamCount_other": "{count} correos sospechosos de spam",
 
-  "summary.count_one": "{count} mensaje en las últimas 24 horas",
-  "summary.count_other": "{count} mensajes en las últimas 24 horas",
-  "summary.truncated": "Se muestran los {shown} más recientes de unos {total} mensajes de las últimas 24 horas",
+  "summary.count_one": "{count} mensaje hoy",
+  "summary.count_other": "{count} mensajes hoy",
+  "summary.truncated": "Se muestran los {shown} más recientes de unos {total} mensajes de hoy",
   "summary.updated": "Actualizado a las {time}",
   "summary.refresh": "Actualizar",
   "summary.refreshing": "Actualizando…",
-  "summary.empty": "No hay mensajes en las últimas 24 horas.",
+  "summary.empty": "Todavía no hay mensajes hoy.",
   "summary.ai.generated":
     "Resumen generado por IA. Puede omitir o describir mal cosas, así que revisa tu bandeja para todo lo importante.",
   "summary.ai.off":
@@ -79,10 +79,24 @@ export const es: Messages = {
   "summary.group.toCheck": "Mensajes para revisar ({count})",
   "summary.group.bulk": "Probablemente promocionales o masivos ({count})",
   "summary.allMessages": "Todos los mensajes ({count})",
-  "summary.incomplete":
-    "Este resumen se cortó, así que puede omitir los últimos correos. Todos los mensajes aparecen en «Todos los mensajes», más abajo.",
   "summary.openInGmail": "Abrir en Gmail",
   "summary.openInGmailAria": "Abrir «{subject}» en Gmail",
+
+  "briefing.bucket.reply": "Necesita respuesta ({count})",
+  "briefing.bucket.deadline": "Con fecha límite o urgente ({count})",
+  "briefing.bucket.fyi": "Para tu información ({count})",
+  "briefing.bucket.noise": "Ruido ({count})",
+  "briefing.count.reply_one": "{count} necesita respuesta",
+  "briefing.count.reply_other": "{count} necesitan respuesta",
+  "briefing.count.deadline_one": "{count} fecha límite",
+  "briefing.count.deadline_other": "{count} fechas límite",
+  "briefing.count.fyi_one": "{count} informativo",
+  "briefing.count.fyi_other": "{count} informativos",
+  "briefing.done": "Hecho",
+  "briefing.doneHint": "Archivar este correo en Gmail (se puede seguir buscando)",
+  "briefing.doneAria": "Marcar «{subject}» como hecho y archivarlo",
+  "briefing.working": "Procesando…",
+  "briefing.allDone": "Estás al día: no queda nada de hoy en tu bandeja.",
 
   "spam.ai.generated":
     "Marcados por IA. Son sugerencias y pueden ser incorrectas, así que revisa cada una antes de actuar.",
@@ -100,7 +114,7 @@ export const es: Messages = {
     "{count} posibles correos de spam más se revisarán con IA a las {time}, cuando se renueve la cuota diaria de IA.",
   "spam.checkMore": "Revisar ahora",
   "spam.checking": "Revisando…",
-  "spam.empty": "No hay spam sospechoso en tu bandeja de las últimas 24 horas.",
+  "spam.empty": "No hay spam sospechoso en tu bandeja de hoy.",
   "spam.reason.marketing": "Parece marketing o una promoción",
   "spam.reason.newsletter": "Parece un boletín o un envío masivo",
   "spam.reason.cold_outreach": "Parece un contacto comercial no solicitado",
@@ -136,6 +150,7 @@ export const es: Messages = {
     "Se canceló la suscripción a {name}, pero no se pudo archivar el mensaje. Sigue en tu bandeja de entrada.",
   "toast.notSpam":
     "«{subject}» se marcó como no spam. Este correo no se volverá a marcar; otros correos del remitente sí pueden marcarse.",
+  "toast.done": "Se archivó «{subject}».",
   "toast.undone": "Deshecho.",
   "toast.undoFailed": "No se pudo deshacer. Revisa el mensaje en Gmail.",
   "toast.undo": "Deshacer",

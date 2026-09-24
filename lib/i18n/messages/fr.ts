@@ -61,13 +61,13 @@ export const fr: Messages = {
   "tabs.spamCount_one": "{count} e-mail suspecté de spam",
   "tabs.spamCount_other": "{count} e-mails suspectés de spam",
 
-  "summary.count_one": "{count} message ces dernières 24 heures",
-  "summary.count_other": "{count} messages ces dernières 24 heures",
-  "summary.truncated": "Affichage des {shown} plus récents sur environ {total} messages des dernières 24 heures",
+  "summary.count_one": "{count} message aujourd'hui",
+  "summary.count_other": "{count} messages aujourd'hui",
+  "summary.truncated": "Affichage des {shown} plus récents sur environ {total} messages d'aujourd'hui",
   "summary.updated": "Mis à jour à {time}",
   "summary.refresh": "Actualiser",
   "summary.refreshing": "Actualisation…",
-  "summary.empty": "Aucun message ces dernières 24 heures.",
+  "summary.empty": "Aucun message aujourd'hui pour l'instant.",
   "summary.ai.generated":
     "Résumé généré par IA. Il peut omettre ou déformer des informations : vérifiez votre boîte de réception pour tout ce qui est important.",
   "summary.ai.off":
@@ -79,10 +79,24 @@ export const fr: Messages = {
   "summary.group.toCheck": "Messages à vérifier ({count})",
   "summary.group.bulk": "Probablement promotionnels ou envois groupés ({count})",
   "summary.allMessages": "Tous les messages ({count})",
-  "summary.incomplete":
-    "Ce résumé a été coupé et peut omettre les derniers e-mails. Tous les messages figurent sous « Tous les messages » ci-dessous.",
   "summary.openInGmail": "Ouvrir dans Gmail",
   "summary.openInGmailAria": "Ouvrir « {subject} » dans Gmail",
+
+  "briefing.bucket.reply": "Réponse attendue ({count})",
+  "briefing.bucket.deadline": "Échéance ou urgent ({count})",
+  "briefing.bucket.fyi": "Pour info ({count})",
+  "briefing.bucket.noise": "Bruit ({count})",
+  "briefing.count.reply_one": "{count} réponse attendue",
+  "briefing.count.reply_other": "{count} réponses attendues",
+  "briefing.count.deadline_one": "{count} échéance",
+  "briefing.count.deadline_other": "{count} échéances",
+  "briefing.count.fyi_one": "{count} pour info",
+  "briefing.count.fyi_other": "{count} pour info",
+  "briefing.done": "Fait",
+  "briefing.doneHint": "Archiver cet e-mail dans Gmail (il reste consultable par recherche)",
+  "briefing.doneAria": "Marquer « {subject} » comme fait et l'archiver",
+  "briefing.working": "En cours…",
+  "briefing.allDone": "Vous êtes à jour : plus rien d'aujourd'hui dans votre boîte de réception.",
 
   "spam.ai.generated":
     "Signalés par IA. Ce sont des suggestions qui peuvent être erronées : vérifiez chacune avant d'agir.",
@@ -100,7 +114,7 @@ export const fr: Messages = {
     "{count} autres e-mails suspects seront vérifiés par l'IA à {time}, quand le quota d'IA du jour sera renouvelé.",
   "spam.checkMore": "Vérifier maintenant",
   "spam.checking": "Vérification…",
-  "spam.empty": "Aucun spam suspecté dans votre boîte de réception ces dernières 24 heures.",
+  "spam.empty": "Aucun spam suspecté dans votre boîte de réception aujourd'hui.",
   "spam.reason.marketing": "Ressemble à du marketing ou à une promotion",
   "spam.reason.newsletter": "Ressemble à une newsletter ou à un envoi groupé",
   "spam.reason.cold_outreach": "Ressemble à une prospection non sollicitée",
@@ -136,6 +150,7 @@ export const fr: Messages = {
     "Désabonnement de {name} effectué, mais le message n'a pas pu être archivé. Il est toujours dans votre boîte de réception.",
   "toast.notSpam":
     "« {subject} » a été marqué comme non spam. Cet e-mail ne sera plus signalé ; les autres e-mails de l'expéditeur peuvent encore l'être.",
+  "toast.done": "« {subject} » a été archivé.",
   "toast.undone": "Annulé.",
   "toast.undoFailed": "Impossible d'annuler. Vérifiez le message dans Gmail.",
   "toast.undo": "Annuler",

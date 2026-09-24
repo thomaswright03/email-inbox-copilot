@@ -159,6 +159,28 @@ describe("POST /api/actions", () => {
     expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "undo", detail: "restored from trash" }));
   });
 
+  it("done: archives the message (removes it from the inbox) and logs it", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
+
+    const res = await POST(postRequest({ action: "done", messageId: "m1" }));
+
+    expect(res.status).toBe(200);
+    expect(archiveMessage).toHaveBeenCalledWith("tok", "m1");
+    expect(trashMessage).not.toHaveBeenCalled();
+    expect(logAuditEvent).toHaveBeenCalledWith({ userId: "gid-a@example.com", action: "done", messageId: "m1" });
+  });
+
+  it("done: a message already deleted in Gmail says so with its own code", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
+    vi.mocked(archiveMessage).mockRejectedValue(new GmailNotFoundError());
+
+    const res = await POST(postRequest({ action: "done", messageId: "m1" }));
+
+    expect(res.status).toBe(410);
+    expect((await res.json()).code).toBe("message_gone");
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
   it("undo_archive: moves the message back to the inbox", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
 

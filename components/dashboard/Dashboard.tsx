@@ -6,7 +6,8 @@ import { signOut, useSession } from "next-auth/react";
 import { ShieldCheck } from "lucide-react";
 import { fetchJson } from "@/lib/client-fetch";
 import { parseSender } from "@/lib/sender";
-import type { ActionName, ActionResult, SpamCardPayload } from "@/lib/payloads";
+import type { BriefingItem } from "@/lib/ai";
+import type { ActionName, ActionResult, SpamCardPayload, TodayPayload } from "@/lib/payloads";
 import { useI18n } from "../I18nProvider";
 import DashboardHeader from "./DashboardHeader";
 import DataFooter from "./DataFooter";
@@ -70,6 +71,15 @@ export default function Dashboard({
   const [notices, setNotices] = useState<Record<string, CardNotice>>({});
   const [confirming, setConfirming] = useState<SpamCardPayload | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
+  // Briefing items marked Done (archived) since the summary last loaded;
+  // a new load starts from what the server says.
+  const [doneIds, setDoneIds] = useState<ReadonlySet<string>>(new Set());
+  const [donePending, setDonePending] = useState<string | null>(null);
+  const [seenToday, setSeenToday] = useState(inbox.today);
+  if (inbox.today !== seenToday) {
+    setSeenToday(inbox.today);
+    setDoneIds(new Set());
+  }
 
   function setTab(next: Tab) {
     if (next === tab) return;
@@ -184,6 +194,50 @@ export default function Dashboard({
     }
   }
 
+  function setDone(id: string, done: boolean) {
+    setDoneIds((prev) => {
+      const next = new Set(prev);
+      if (done) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  // Done archives the message; Undo moves it back to the inbox.
+  async function markDone(item: BriefingItem, email: TodayPayload["emails"][number]) {
+    setDonePending(item.id);
+    try {
+      const result = await postAction("done", item.id);
+      if (!result.ok && result.code === "message_gone") {
+        setDone(item.id, true);
+        showToast({ tone: "warning", message: t("errors.message_gone") });
+        void inbox.refresh();
+        return;
+      }
+      if (!result.ok) {
+        showToast({ tone: "warning", message: t(errorMessageKey(result.code, "errors.action")) });
+        return;
+      }
+      setDone(item.id, true);
+      showToast({
+        tone: "success",
+        message: t("toast.done", { subject: email.subject }),
+        onUndo: async () => {
+          setToast(null);
+          const undone = await postAction("undo_archive", item.id);
+          if (!undone.ok) {
+            showToast({ tone: "warning", message: t("toast.undoFailed") });
+            return;
+          }
+          setDone(item.id, false);
+          showToast({ tone: "success", message: t("toast.undone") });
+        },
+      });
+    } finally {
+      setDonePending(null);
+    }
+  }
+
   const spamCount = inbox.spam.status === "ready" ? cards.length : null;
   const resetTime = (iso: string | undefined) => (iso ? formatResetTime(iso, locale) : "");
 
@@ -202,6 +256,9 @@ export default function Dashboard({
               refreshing={inbox.refreshing}
               onRefresh={() => void inbox.refresh()}
               onRetry={inbox.retryToday}
+              doneIds={doneIds}
+              pendingId={donePending}
+              onDone={(item, email) => void markDone(item, email)}
             />
           ) : inbox.spam.status === "error" ? (
             <ErrorState

@@ -92,7 +92,7 @@ describe("when an upstream never answers", () => {
     await vi.advanceTimersByTimeAsync(GEMINI_TIMEOUT_MS.summary);
     expect(settled).toBe(true);
     const body = await (await pending).json();
-    expect(body).toMatchObject({ aiStatus: "unavailable", summary: null, groups: { toCheck: ["m1"], bulk: [] } });
+    expect(body).toMatchObject({ aiStatus: "unavailable", briefing: null, groups: { toCheck: ["m1"], bulk: [] } });
   });
 
   it("the server gives up before the dashboard does", () => {

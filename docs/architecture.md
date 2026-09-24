@@ -38,7 +38,9 @@ card, confirm dialog and toast components beside it).
    load that is still running after 5 s says it is taking longer than usual.
 4. **AI calls.** Only when `aiEnabled()` (both `GEMINI_API_KEY` and
    `GEMINI_PAID_TIER_PROJECT` set, i.e. the key is attested to be on Gemini's paid tier),
-   `lib/ai.ts` calls Gemini (`gemini-3.5-flash-lite`): `summarizeToday` for the digest,
+   `lib/ai.ts` calls Gemini (`gemini-3.5-flash-lite`): `summarizeToday` for the Actionable Briefing (one
+   JSON call over the mail still in the inbox, each email under an opaque handle, validated
+   item by item with Zod in `parseBriefing`),
    `classifyCandidates` for spam verdicts (only for messages that clear a cheap heuristic
    pre-filter first, one call per email, at most 20 per load). Each email's verdict is
    cached for 26 hours (`lib/verdict-cache.ts`), so it is checked once; candidates not

@@ -35,6 +35,8 @@ const EMAIL: ParsedEmail = {
   isInInbox: true,
 };
 
+const BRIEFING = [{ id: "m1", bucket: "reply" as const, action: "Answer the sender", due: "" }];
+
 function inbox(emails: ParsedEmail[], truncated = false) {
   return { emails, truncated, totalEstimate: truncated ? 250 : emails.length };
 }
@@ -58,35 +60,67 @@ describe("GET /api/emails/today", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns the summary, count, and mapped emails on success", async () => {
+  it("returns the briefing, count, and mapped emails on success", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-1@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(summarizeToday).mockResolvedValue({ text: "**Summary**", incomplete: false });
+    vi.mocked(summarizeToday).mockResolvedValue(BRIEFING);
 
     const res = await GET(getRequest());
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body).toMatchObject({ summary: "**Summary**", aiStatus: "generated", groups: null, count: 1, truncated: false });
+    expect(body).toMatchObject({ briefing: BRIEFING, aiStatus: "generated", groups: null, count: 1, truncated: false });
     expect(Date.parse(body.generatedAt)).not.toBeNaN();
     expect(body.emails).toEqual([{ id: "m1", threadId: "t1", from: "sender@example.com", subject: "Hi", date: "2026-09-23" }]);
     expect(summarizeToday).toHaveBeenCalledWith([EMAIL], "en");
   });
 
-  it("passes on that a summary stopped at the output limit", async () => {
+  it("falls back to rule-based groups when the model's briefing was unusable", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-cut@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(summarizeToday).mockResolvedValue({ text: "- First", incomplete: true });
+    vi.mocked(summarizeToday).mockResolvedValue(null);
 
     const body = await (await GET(getRequest())).json();
 
-    expect(body).toMatchObject({ summary: "- First", summaryIncomplete: true, aiStatus: "generated" });
+    expect(body).toMatchObject({ briefing: null, aiStatus: "unavailable", groups: { toCheck: ["m1"], bulk: [] } });
+  });
+
+  it("makes no model call when everything from today is already archived, and says nothing is left", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-archived@example.com"));
+    vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([{ ...EMAIL, isInInbox: false }]));
+
+    const body = await (await GET(getRequest())).json();
+
+    expect(summarizeToday).not.toHaveBeenCalled();
+    expect(body).toMatchObject({ briefing: [], aiStatus: "generated", groups: null, count: 1 });
+  });
+
+  it("reads Gmail from the user's local midnight, and keeps each day's cache apart", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      // 7 pm on Sept 23 in Los Angeles; already Sept 24 in UTC.
+      vi.setSystemTime(new Date("2026-09-24T02:00:00Z"));
+      vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-tz@example.com"));
+      vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
+      vi.mocked(summarizeToday).mockResolvedValue(BRIEFING);
+
+      await GET(getRequest("?tz=America%2FLos_Angeles"));
+      expect(fetchRecentMessages).toHaveBeenLastCalledWith("tok", Date.parse("2026-09-23T07:00:00Z") / 1000);
+
+      // Past the user's midnight: a new day, read afresh.
+      vi.setSystemTime(new Date("2026-09-24T07:30:00Z"));
+      await GET(getRequest("?tz=America%2FLos_Angeles"));
+      expect(fetchRecentMessages).toHaveBeenCalledTimes(2);
+      expect(fetchRecentMessages).toHaveBeenLastCalledWith("tok", Date.parse("2026-09-24T07:00:00Z") / 1000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("writes the summary in the requested language", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-lang@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(summarizeToday).mockResolvedValue({ text: "**Résumé**", incomplete: false });
+    vi.mocked(summarizeToday).mockResolvedValue(BRIEFING);
 
     await GET(getRequest("?lang=fr"));
 
@@ -96,7 +130,7 @@ describe("GET /api/emails/today", () => {
   it("reports when the inbox had more messages than it read", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-trunc@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL], true));
-    vi.mocked(summarizeToday).mockResolvedValue({ text: "**Summary**", incomplete: false });
+    vi.mocked(summarizeToday).mockResolvedValue(BRIEFING);
 
     const body = await (await GET(getRequest())).json();
 
@@ -133,13 +167,13 @@ describe("GET /api/emails/today", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body).toMatchObject({ aiStatus: "unavailable", summary: null, groups: { toCheck: ["m1"], bulk: [] } });
+    expect(body).toMatchObject({ aiStatus: "unavailable", briefing: null, groups: { toCheck: ["m1"], bulk: [] } });
   });
 
   it("serves a second request from cache without calling Gmail/Gemini again", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-4@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(summarizeToday).mockResolvedValue({ text: "**Summary**", incomplete: false });
+    vi.mocked(summarizeToday).mockResolvedValue(BRIEFING);
 
     await GET(getRequest());
     await GET(getRequest());
@@ -153,7 +187,7 @@ describe("GET /api/emails/today", () => {
     try {
       vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-refresh@example.com"));
       vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-      vi.mocked(summarizeToday).mockResolvedValue({ text: "**Summary**", incomplete: false });
+      vi.mocked(summarizeToday).mockResolvedValue(BRIEFING);
 
       await GET(getRequest());
       await GET(getRequest("?refresh=1"));
@@ -178,7 +212,7 @@ describe("GET /api/emails/today", () => {
 
     expect(res.status).toBe(200);
     expect(summarizeToday).not.toHaveBeenCalled();
-    expect(body).toMatchObject({ aiStatus: "off", summary: null, groups: { toCheck: ["m1"], bulk: [] } });
+    expect(body).toMatchObject({ aiStatus: "off", briefing: null, groups: { toCheck: ["m1"], bulk: [] } });
   });
 
   it("doesn't call Gemini when there are no messages", async () => {
@@ -188,16 +222,16 @@ describe("GET /api/emails/today", () => {
     const body = await (await GET(getRequest())).json();
 
     expect(summarizeToday).not.toHaveBeenCalled();
-    expect(body).toMatchObject({ count: 0, summary: null });
+    expect(body).toMatchObject({ count: 0, briefing: null });
   });
 
-  it("with the default AI budget, 10 uncached loads for one user in a day all get an AI summary", async () => {
+  it("with the default AI budget, 10 uncached loads for one user in a day all get an AI briefing", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-10loads@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(summarizeToday).mockResolvedValue({ text: "**Summary**", incomplete: false });
+    vi.mocked(summarizeToday).mockResolvedValue(BRIEFING);
     for (let load = 0; load < 10; load++) {
       const body = await (await GET(getRequest("?refresh=1"))).json();
-      expect(body).toMatchObject({ aiStatus: "generated", summary: "**Summary**" });
+      expect(body).toMatchObject({ aiStatus: "generated", briefing: BRIEFING });
     }
     expect(summarizeToday).toHaveBeenCalledTimes(10);
   });

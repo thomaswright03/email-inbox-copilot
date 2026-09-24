@@ -5,9 +5,18 @@ import { SPAM_REASONS, type SpamReason } from "./spam-reasons";
 import { emit, toSafeError } from "./log";
 import { withRetry } from "./retry";
 import { withTimeout } from "./timeout";
-import { MODEL, SPAM_RESPONSE_SCHEMA, SPAM_SYSTEM_INSTRUCTION, spamPrompt, SUMMARY_SYSTEM_INSTRUCTION, summaryPrompt } from "./ai-prompts";
+import {
+  BRIEFING_BUCKETS,
+  BRIEFING_RESPONSE_SCHEMA,
+  MODEL,
+  SPAM_RESPONSE_SCHEMA,
+  SPAM_SYSTEM_INSTRUCTION,
+  spamPrompt,
+  SUMMARY_SYSTEM_INSTRUCTION,
+  summaryPrompt,
+} from "./ai-prompts";
 
-export { MODEL };
+export { MODEL, BRIEFING_BUCKETS };
 
 // Created on first use, so importing this module (builds, AI-off
 // deployments, tests) never constructs a client or warns about a missing key.
@@ -110,7 +119,7 @@ export function __setModelForTests(fake: Generate | null): void {
 // stripped of control characters and angle brackets (so it can't close or
 // forge the <email> delimiters), and presented to the model as quoted data
 // under a system instruction that says so.
-const FIELD_LIMITS = { from: 200, subject: 300, snippet: 400 } as const;
+const FIELD_LIMITS = { from: 200, subject: 300, snippet: 400, date: 80 } as const;
 
 export function sanitizeForPrompt(value: string, maxLength: number): string {
   return value
@@ -121,10 +130,13 @@ export function sanitizeForPrompt(value: string, maxLength: number): string {
     .slice(0, maxLength);
 }
 
-function emailBlock(handle: string, e: ParsedEmail): string {
+// `withDate` adds the Date header, so the briefing can judge what is
+// time-sensitive.
+function emailBlock(handle: string, e: ParsedEmail, { withDate = false } = {}): string {
   return [
     `<email id="${handle}">`,
     `From: ${sanitizeForPrompt(e.from, FIELD_LIMITS.from)}`,
+    ...(withDate && e.date ? [`Received: ${sanitizeForPrompt(e.date, FIELD_LIMITS.date)}`] : []),
     `Subject: ${sanitizeForPrompt(e.subject, FIELD_LIMITS.subject)}`,
     `Preview: ${sanitizeForPrompt(e.snippet, FIELD_LIMITS.snippet)}`,
     `</email>`,
@@ -146,39 +158,96 @@ export function stripLinksAndImages(markdown: string): string {
     .replace(/[<>]/g, "");
 }
 
-const SUMMARY_MAX_OUTPUT_TOKENS = 1024;
+// Room for a line on each of the (up to 100) emails in the window.
+const SUMMARY_MAX_OUTPUT_TOKENS = 8192;
 
-// `incomplete`: the model stopped at SUMMARY_MAX_OUTPUT_TOKENS, so the
-// summary may leave out the last items. The unfinished last line is
-// dropped, and the dashboard says the summary was cut short (every message
-// is still listed under it).
-export type Summary = { text: string; incomplete: boolean };
+export type BriefingBucket = (typeof BRIEFING_BUCKETS)[number];
 
-// Keeps the summary up to its last complete line (a half-written bullet
-// would read as if it were the whole point).
-function dropUnfinishedLine(text: string): string {
-  const lastBreak = text.trimEnd().lastIndexOf("\n");
-  return lastBreak > 0 ? text.slice(0, lastBreak) : text;
+// One line of the briefing. `id` is always the id of an email that was sent
+// to the model, never one the model made up. `action` and `due` are model
+// output over attacker-written emails, shown as plain text only.
+export type BriefingItem = { id: string; bucket: BriefingBucket; action: string; due: string };
+
+const TEXT_LIMITS = { action: 160, due: 40 } as const;
+
+const ModelBriefingItemSchema = z
+  .object({
+    id: z.string(),
+    bucket: z.enum(BRIEFING_BUCKETS),
+    action: z.string(),
+    due: z.string(),
+  })
+  .strict();
+
+// Model text shown on the dashboard: links, images and angle brackets are
+// removed, whitespace is collapsed, and the length is capped.
+function cleanModelText(value: string, maxLength: number): string {
+  return stripLinksAndImages(value).replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
-// Returns null when the model produced nothing usable; the caller then
-// falls back to the rule-based view.
-export async function summarizeToday(emails: ParsedEmail[], language: SummaryLanguage = "en"): Promise<Summary | null> {
-  if (emails.length === 0) return null;
+// Like parseModelVerdict, anything that isn't exactly the expected shape is
+// dropped, one entry at a time, so one malformed item doesn't cost the rest.
+// Items are matched to emails by the handle each email was sent under
+// (`handles`); an unknown or repeated handle is dropped. Emails the model
+// left out are listed as FYI, so nothing in the inbox silently disappears.
+export function parseBriefing(raw: unknown, handles: Map<string, ParsedEmail>): BriefingItem[] | null {
+  if (typeof raw !== "object" || raw === null || !Array.isArray((raw as { items?: unknown }).items)) return null;
+  const byId = new Map<string, BriefingItem>();
+  for (const entry of (raw as { items: unknown[] }).items) {
+    const parsed = ModelBriefingItemSchema.safeParse(entry);
+    if (!parsed.success) continue;
+    const email = handles.get(parsed.data.id);
+    if (!email || byId.has(email.id)) continue;
+    byId.set(email.id, {
+      id: email.id,
+      bucket: parsed.data.bucket,
+      action: parsed.data.bucket === "noise" ? "" : cleanModelText(parsed.data.action, TEXT_LIMITS.action),
+      due: cleanModelText(parsed.data.due, TEXT_LIMITS.due),
+    });
+  }
+  if (byId.size === 0) return null;
+  // Newest first within each bucket, the same order as the message list.
+  return [...handles.values()].map(
+    (e) => byId.get(e.id) ?? { id: e.id, bucket: "fyi" as const, action: "", due: "" }
+  );
+}
 
-  const digest = emails.map((e, i) => emailBlock(`e${i + 1}`, e)).join("\n\n");
+// The Actionable Briefing: each email still in the inbox, sorted into
+// reply / deadline / fyi / noise with a one-line action. Mail already
+// archived isn't sent (it has been dealt with). Returns null when there is
+// nothing to sort or the model produced nothing usable; the caller then
+// falls back to the rule-based view. A reply cut off at the output limit
+// isn't valid JSON, so it is discarded like any other malformed answer.
+export async function summarizeToday(emails: ParsedEmail[], language: SummaryLanguage = "en"): Promise<BriefingItem[] | null> {
+  const inbox = emails.filter((e) => e.isInInbox);
+  if (inbox.length === 0) return null;
 
-  const reply = asReply(
+  const handles = new Map(inbox.map((e, i) => [`e${i + 1}`, e]));
+  const digest = [...handles].map(([handle, e]) => emailBlock(handle, e, { withDate: true })).join("\n\n");
+
+  const { text } = asReply(
     await generate(
       summaryPrompt(SUMMARY_LANGUAGES[language], digest),
-      { systemInstruction: SUMMARY_SYSTEM_INSTRUCTION, maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS },
+      {
+        systemInstruction: SUMMARY_SYSTEM_INSTRUCTION,
+        responseMimeType: "application/json",
+        responseJsonSchema: BRIEFING_RESPONSE_SCHEMA,
+        maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS,
+      },
       "summary"
     )
   );
-  const incomplete = reply.finishReason === "MAX_TOKENS";
-  const text = reply.text && incomplete ? dropUnfinishedLine(reply.text) : reply.text;
-  const cleaned = text ? stripLinksAndImages(text).trim() : "";
-  return cleaned ? { text: cleaned, incomplete } : null;
+  if (!text) return null;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    logAiUsage({ feature: "summary", outcome: "discarded" });
+    return null;
+  }
+  const items = parseBriefing(raw, handles);
+  if (!items) logAiUsage({ feature: "summary", outcome: "discarded" });
+  return items;
 }
 
 export type SpamVerdict = { id: string; isSpam: boolean; reason: SpamReason };
