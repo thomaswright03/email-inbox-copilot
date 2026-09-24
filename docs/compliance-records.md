@@ -14,7 +14,8 @@ marked for attorney review before publication.
 
 ## 1. Gemini tier (AI processing of Gmail data)
 
-Gmail-derived data (sender, subject, snippet) may be sent only to Gemini under Google's
+Gmail-derived data (sender, subject, snippet and the Date header of today's inbox
+messages, with the user's local date, time and time zone) may be sent only to Gemini under Google's
 **paid** API terms, where Google does not use prompts or responses to improve its
 products. The code enforces this: AI is off, and nothing is sent to Gemini, unless
 `GEMINI_PAID_TIER_PROJECT` is set (`lib/ai.ts`, `aiEnabled`). Setting it is the
@@ -36,7 +37,7 @@ spam list).
 | Vendor | Receives | Terms / DPA | Accepted on |
 |---|---|---|---|
 | Google (Gmail API, OAuth) | OAuth tokens; Gmail metadata requests | Google API Services User Data Policy; Google Workspace API User Data and Developer Policy | **NEEDS THOMAS** |
-| Google (Gemini API, paid) | Sender, subject, snippet (only with AI on) | Gemini API Additional Terms (paid services); Google Cloud Data Processing Addendum | **NEEDS THOMAS** |
+| Google (Gemini API, paid) | Sender, subject, snippet, Date header; the user's local date, time and time zone (only with AI on) | Gemini API Additional Terms (paid services); Google Cloud Data Processing Addendum | **NEEDS THOMAS** |
 | Vercel Inc. | All requests; runtime logs with Google account ids | Vercel DPA (vercel.com/legal/dpa) | **NEEDS THOMAS** |
 | Neon Inc. | Database: encrypted 5-minute cache and 26-hour spam-verdict cache, audit log, consent records, session versions, Not spam choices, rate-limit counters | Neon DPA (neon.tech/dpa) | **NEEDS THOMAS** |
 | Alert webhook (Slack/Discord), optional | Event names only, no personal data | n/a | n/a |
@@ -79,14 +80,15 @@ section 1, and enforced where the code can:
 
 | Data | Period | Where set | Rationale |
 |---|---|---|---|
-| Encrypted inbox cache | 5 minutes; deleted at sign-out | `INBOX_CACHE_TTL_MS` in `lib/inbox.ts` | Avoid re-reading Gmail on reload |
+| Encrypted inbox cache (message metadata, briefing with model text, spam list, triage) | 5 minutes (a triage where a Gemini call failed: 60 seconds); deleted at sign-out | `INBOX_CACHE_TTL_MS` in `lib/inbox.ts`, `TRIAGE_FAILURE_BACKOFF_MS` in `lib/triage.ts` | Avoid re-reading Gmail and re-asking Gemini on reload |
 | Encrypted AI spam verdicts (Gmail message id, spam yes/no, fixed reason) | 26 hours; deleted at sign-out | `VERDICT_TTL_MS` in `lib/verdict-cache.ts` | Reuse each email's spam verdict (from the triage call) without asking Gemini again, within the daily AI budget |
 | Session cookie | 12 hours idle | `auth.ts` `maxAge` | Cookie carries a refresh token |
+| Snooze / Remind me (Gmail message and thread ids, a time) | In the user's browser only (localStorage), never on our servers; until dismissed or Done, at most 7 days after the time | `KEEP_DUE_MS` in `components/dashboard/later.ts` | Gmail's API has no snooze; keeping it in the browser stores nothing new about the user's mail on the server |
 | Session-version rows | 30 days after last sign-in | `migrations/002`, `purge_user_sessions` | Only needed while a session can be alive |
 | Activity (audit) log | 90 days (`AUDIT_RETENTION_DAYS`, minimum 30; don't raise it without updating the Privacy Policy) | `lib/audit.ts`, `purge_audit_log` | Investigate incidents and disputes |
 | Consent records | 3 years | `migrations/002`, `purge_consent_records` | Evidence of what each user agreed to |
 | Rate-limit counters | 2 days | `lib/rate-limit.ts` | Enforce limits |
-| Not spam choices (Google account id + Gmail message id) | 7 days | `RETENTION_DAYS` in `lib/ignored.ts` | Keep a message the user cleared from being flagged again; the dashboard only covers 24 hours |
+| Not spam choices (Google account id + Gmail message id) | 7 days | `RETENTION_DAYS` in `lib/ignored.ts` | Keep a message the user cleared from being flagged again; the dashboard only covers today's mail (since the user's local midnight) |
 
 Changing any of these requires the same change in the Privacy Policy section 5 and a new
 `LEGAL_VERSION`.

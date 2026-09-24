@@ -3,8 +3,8 @@ import { getCachedDb, setCachedDb } from "./db-cache";
 import type { SpamReason } from "./spam-reasons";
 
 // AI spam verdicts per Gmail message, kept for a little over a day (the
-// dashboard's window is 24 hours), so each email is sent to Gemini once
-// rather than on every load or Refresh. Stored like the response cache: in
+// dashboard shows today's mail, since the user's local midnight), so the
+// spam list doesn't ask Gemini again on every load or Refresh. Stored like the response cache: in
 // memory and encrypted in Postgres, and deleted at sign-out
 // (lib/response-cache.ts purgeUserCaches). Only message ids, the yes/no
 // verdict and its fixed reason are kept, never message content.

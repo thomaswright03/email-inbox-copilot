@@ -1,5 +1,13 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { __setModelForTests, parseTriage, triageToday } from "../ai";
+import {
+  __setModelForTests,
+  GEMINI_TIMEOUT_MS,
+  parseTriage,
+  TRIAGE_CHUNK_SIZE,
+  triageMaxOutputTokens,
+  triageTimeoutMs,
+  triageToday,
+} from "../ai";
 import type { ParsedEmail } from "../gmail";
 
 function email(id: string, overrides: Partial<ParsedEmail> = {}): ParsedEmail {
@@ -171,6 +179,26 @@ describe("triageToday", () => {
     expect(prompt).not.toContain("ARCHIVED");
     expect(prompt).not.toContain('id="m1"');
     expect(prompt).not.toContain("t-m1");
+  });
+
+  it("sizes each call's output limit and timeout to its emails", async () => {
+    const calls: { maxOutputTokens: number; timeoutMs: number }[] = [];
+    __setModelForTests(async (_p, config, _f, { timeoutMs }) => {
+      calls.push({ maxOutputTokens: config.maxOutputTokens, timeoutMs });
+      return JSON.stringify({ items: [] });
+    });
+    await triageToday([email("m1")], { now: "now" });
+    await triageToday(
+      Array.from({ length: TRIAGE_CHUNK_SIZE }, (_, i) => email(`m${i}`)),
+      { now: "now" }
+    );
+    expect(calls).toEqual([
+      { maxOutputTokens: triageMaxOutputTokens(1), timeoutMs: triageTimeoutMs(1) },
+      { maxOutputTokens: triageMaxOutputTokens(TRIAGE_CHUNK_SIZE), timeoutMs: GEMINI_TIMEOUT_MS },
+    ]);
+    // Room for a line per email: a full chunk gets well over 100 tokens each.
+    expect(triageMaxOutputTokens(TRIAGE_CHUNK_SIZE)).toBeGreaterThanOrEqual(TRIAGE_CHUNK_SIZE * 100);
+    expect(calls[0].timeoutMs).toBeLessThan(calls[1].timeoutMs);
   });
 
   it("makes no model call when nothing is left in the inbox", async () => {

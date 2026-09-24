@@ -16,6 +16,7 @@ vi.mock("next-auth/react", () => ({
 import { signIn, signOut, useSession } from "next-auth/react";
 import Dashboard from "../Dashboard";
 import type { SpamCardPayload, SpamPayload, TodayPayload } from "@/lib/payloads";
+import { FETCH_TIMEOUT_MS } from "@/lib/client-fetch";
 import { htmlError, json, renderWithProviders } from "@/components/__tests__/test-utils";
 
 const GENERATED_AT = "2026-09-24T10:42:00.000Z";
@@ -358,8 +359,10 @@ describe("Dashboard", () => {
         mockApi({ today: () => json(today({ ...BRIEFING, briefing: [reply] })) });
         renderDashboard();
         fireEvent.click(await screen.findByRole("button", { name: "Remind me about “Contract review”" }));
+        // Reminders need the tab open, and the menu says so before one is set.
+        expect(screen.getByText(/^Reminders only appear while Inbox Buddy is open in this browser\./)).toBeTruthy();
         fireEvent.click(screen.getByRole("button", { name: /^Later today/ }));
-        expect(await screen.findByText(/^Reminder set for .+: “Contract review”\.$/)).toBeTruthy();
+        expect(await screen.findByText(/^Reminder set for .+: “Contract review”\. Keep Inbox Buddy open in this browser to get it\.$/)).toBeTruthy();
         expect(screen.getByText("Reply to Ana")).toBeTruthy();
         expect(requestPermission).toHaveBeenCalledTimes(1);
         // Remind me doesn't touch the server at all.
@@ -471,7 +474,7 @@ describe("Dashboard", () => {
       });
       expect(screen.getByText("This is taking longer than usual…")).toBeTruthy();
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(15_000);
+        await vi.advanceTimersByTimeAsync(FETCH_TIMEOUT_MS - 5_000);
       });
       expect(screen.getByText("Inbox Buddy is taking too long to answer. Check your connection and try again.")).toBeTruthy();
       vi.useRealTimers();

@@ -1,9 +1,10 @@
 // A stand-in for the Gemini API, used only by the end-to-end tests. The
-// AI-on app under test is pointed at it with GEMINI_API_ROOT_URL
-// (lib/ai.ts). It answers the triage call (lib/ai-prompts.ts) the way a
-// careful model would for the Gmail stand-in's inbox (e2e/gmail-stub.mjs),
-// reading only the prompt it was sent: each <email id="…"> block is sorted
-// by its subject, and "due today" uses the date the prompt says it is now.
+// AI-on app under test is pointed at it with GEMINI_API_ROOT_URL, which the
+// app honours only with E2E_STAND_INS=1 (lib/stand-ins.ts). It answers the
+// triage calls (lib/ai-prompts.ts) the way a careful model would for the
+// Gmail stand-in's inbox (e2e/gmail-stub.mjs), reading only the prompt it
+// was sent: each <email id="…"> block is sorted by its subject, and "due
+// today" uses the date the prompt says it is now.
 //
 // GET /__calls returns how many triage calls it has answered.
 import http from "node:http";

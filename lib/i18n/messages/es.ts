@@ -23,11 +23,11 @@ export const es: Messages = {
 
   "consent.title": "Antes de continuar",
   "consent.ai":
-    "Cuando las funciones de IA están activadas, el remitente, el asunto y una vista previa breve de tus correos recientes se envían a la API Gemini de Google (nivel de pago, que Google no usa para mejorar sus productos) para escribir tu resumen y detectar spam. Cuando están desactivadas, no se envía nada a Gemini.",
+    "Cuando las funciones de IA están activadas, el remitente, el asunto, la fecha y una vista previa breve de tus correos de hoy, junto con tu fecha, hora y zona horaria locales, se envían a la API Gemini de Google (nivel de pago, que Google no usa para mejorar sus productos) para organizar tu resumen y detectar spam. Cuando están desactivadas, no se envía nada a Gemini.",
   "consent.accuracy":
     "Los resúmenes y las marcas de spam pueden estar incompletos o ser incorrectos. Revisa siempre tu bandeja de entrada para todo lo urgente o importante.",
   "consent.actions":
-    "Eliminar mueve un mensaje a la papelera. Cancelar suscripción contacta al remitente y archiva el mensaje. Ambas acciones afectan a tu cuenta de Gmail de inmediato.",
+    "Eliminar mueve un mensaje a la papelera. Hecho lo archiva. Cancelar suscripción contacta al remitente y archiva el mensaje. Estas acciones afectan a tu cuenta de Gmail de inmediato. Posponer y Recordarme se guardan solo en este navegador y no cambian nada en Gmail.",
   "consent.scope":
     "No conectes un buzón con correspondencia legal confidencial, médica o de cuentas financieras.",
   "consent.checkboxPrefix": "Tengo 18 años o más, y he leído y acepto los",
@@ -109,7 +109,8 @@ export const es: Messages = {
   "later.snoozeHint": "Ocultarlo aquí hasta más tarde. No cambia nada en Gmail.",
   "later.snoozeMenu": "Posponer “{subject}” hasta",
   "later.remindAria": "Recordarme “{subject}”",
-  "later.remindHint": "Dejarlo aquí y recibir un recordatorio más tarde",
+  "later.remindHint": "Dejarlo aquí y recibir un recordatorio más tarde, mientras Inbox Buddy esté abierto en este navegador",
+  "later.remindNote": "Los recordatorios solo aparecen mientras Inbox Buddy está abierto en este navegador. Si está cerrado, los verás la próxima vez que lo abras aquí.",
   "later.remindMenu": "Recordarme “{subject}”",
   "later.choice.laterToday": "Más tarde hoy",
   "later.choice.tomorrow": "Mañana por la mañana",
@@ -176,7 +177,7 @@ export const es: Messages = {
     "«{subject}» se marcó como no spam. Este correo no se volverá a marcar; otros correos del remitente sí pueden marcarse.",
   "toast.done": "Se archivó «{subject}».",
   "toast.snoozed": "“{subject}” pospuesto hasta {time}. Solo se oculta aquí; no cambió nada en Gmail.",
-  "toast.reminder": "Recordatorio para {time}: “{subject}”.",
+  "toast.reminder": "Recordatorio para {time}: “{subject}”. Mantén Inbox Buddy abierto en este navegador para recibirlo.",
   "toast.undone": "Deshecho.",
   "toast.undoFailed": "No se pudo deshacer. Revisa el mensaje en Gmail.",
   "toast.undo": "Deshacer",

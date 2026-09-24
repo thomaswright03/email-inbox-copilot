@@ -23,11 +23,11 @@ export const fr: Messages = {
 
   "consent.title": "Avant de continuer",
   "consent.ai":
-    "Lorsque les fonctions d'IA sont activées, l'expéditeur, l'objet et un court aperçu de vos e-mails récents sont envoyés à l'API Gemini de Google (offre payante, que Google n'utilise pas pour améliorer ses produits) pour rédiger votre résumé et repérer le spam. Lorsqu'elles sont désactivées, rien n'est envoyé à Gemini.",
+    "Lorsque les fonctions d'IA sont activées, l'expéditeur, l'objet, la date et un court aperçu de vos e-mails du jour, ainsi que votre date, heure et fuseau horaire locaux, sont envoyés à l'API Gemini de Google (offre payante, que Google n'utilise pas pour améliorer ses produits) pour organiser votre résumé et repérer le spam. Lorsqu'elles sont désactivées, rien n'est envoyé à Gemini.",
   "consent.accuracy":
     "Les résumés et les signalements de spam peuvent être incomplets ou erronés. Vérifiez toujours votre boîte de réception pour tout ce qui est urgent ou important.",
   "consent.actions":
-    "Supprimer place un message dans la corbeille. Se désabonner contacte l'expéditeur et archive le message. Ces deux actions s'appliquent immédiatement à votre compte Gmail.",
+    "Supprimer place un message dans la corbeille. Fait l'archive. Se désabonner contacte l'expéditeur et archive le message. Ces actions s'appliquent immédiatement à votre compte Gmail. La mise en attente et les rappels sont enregistrés uniquement dans ce navigateur et ne changent rien dans Gmail.",
   "consent.scope":
     "Ne connectez pas une boîte contenant de la correspondance juridique confidentielle, médicale ou liée à des comptes financiers.",
   "consent.checkboxPrefix": "J'ai 18 ans ou plus, et j'ai lu et j'accepte les",
@@ -109,7 +109,8 @@ export const fr: Messages = {
   "later.snoozeHint": "Le masquer ici jusqu'à plus tard. Rien ne change dans Gmail.",
   "later.snoozeMenu": "Mettre en attente « {subject} » jusqu'à",
   "later.remindAria": "Me rappeler « {subject} »",
-  "later.remindHint": "Le garder ici et recevoir un rappel plus tard",
+  "later.remindHint": "Le garder ici et recevoir un rappel plus tard, tant qu'Inbox Buddy est ouvert dans ce navigateur",
+  "later.remindNote": "Les rappels n'apparaissent que lorsqu'Inbox Buddy est ouvert dans ce navigateur. S'il est fermé, vous les verrez la prochaine fois que vous l'ouvrirez ici.",
   "later.remindMenu": "Me rappeler « {subject} »",
   "later.choice.laterToday": "Plus tard aujourd'hui",
   "later.choice.tomorrow": "Demain matin",
@@ -176,7 +177,7 @@ export const fr: Messages = {
     "« {subject} » a été marqué comme non spam. Cet e-mail ne sera plus signalé ; les autres e-mails de l'expéditeur peuvent encore l'être.",
   "toast.done": "« {subject} » a été archivé.",
   "toast.snoozed": "« {subject} » mis en attente jusqu'à {time}. Il est seulement masqué ici ; rien n'a changé dans Gmail.",
-  "toast.reminder": "Rappel prévu {time} : « {subject} ».",
+  "toast.reminder": "Rappel prévu {time} : « {subject} ». Gardez Inbox Buddy ouvert dans ce navigateur pour le recevoir.",
   "toast.undone": "Annulé.",
   "toast.undoFailed": "Impossible d'annuler. Vérifiez le message dans Gmail.",
   "toast.undo": "Annuler",

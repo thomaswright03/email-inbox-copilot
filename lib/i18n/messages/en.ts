@@ -24,11 +24,11 @@ export const en = {
 
   "consent.title": "Before you continue",
   "consent.ai":
-    "When AI features are on, the sender, subject, and a short preview of your recent emails are sent to Google's Gemini API (paid tier, which Google doesn't use to improve its products) to write your summary and flag spam. When they are off, nothing is sent to Gemini.",
+    "When AI features are on, the sender, subject, date and a short preview of today's emails, and your local date, time and time zone, are sent to Google's Gemini API (paid tier, which Google doesn't use to improve its products) to sort your briefing and flag spam. When they are off, nothing is sent to Gemini.",
   "consent.accuracy":
     "Summaries and spam flags can be incomplete or wrong. Always check your inbox directly for anything time-sensitive or important.",
   "consent.actions":
-    "Delete moves a message to Trash. Unsubscribe contacts the sender and archives the message. Both act on your Gmail account immediately.",
+    "Delete moves a message to Trash. Done archives it. Unsubscribe contacts the sender and archives the message. These act on your Gmail account immediately. Snooze and Remind me are kept only in this browser and change nothing in Gmail.",
   "consent.scope": "Don't connect a mailbox holding privileged legal, medical, or financial-account correspondence.",
   "consent.checkboxPrefix": "I am 18 or older, and I have read and agree to the",
   "consent.agree": "Agree & Continue",
@@ -108,7 +108,8 @@ export const en = {
   "later.snoozeHint": "Hide this here until later. Nothing changes in Gmail.",
   "later.snoozeMenu": "Snooze “{subject}” until",
   "later.remindAria": "Remind me about “{subject}”",
-  "later.remindHint": "Keep this here and get a reminder later",
+  "later.remindHint": "Keep this here and get a reminder later, while Inbox Buddy is open in this browser",
+  "later.remindNote": "Reminders only appear while Inbox Buddy is open in this browser. With it closed, you get them the next time you open it here.",
   "later.remindMenu": "Remind me about “{subject}”",
   "later.choice.laterToday": "Later today",
   "later.choice.tomorrow": "Tomorrow morning",
@@ -169,7 +170,7 @@ export const en = {
     "Marked “{subject}” as not spam. This email won't be flagged again; other emails from the sender still can be.",
   "toast.done": "Archived “{subject}”.",
   "toast.snoozed": "Snoozed “{subject}” until {time}. It's only hidden here; nothing changed in Gmail.",
-  "toast.reminder": "Reminder set for {time}: “{subject}”.",
+  "toast.reminder": "Reminder set for {time}: “{subject}”. Keep Inbox Buddy open in this browser to get it.",
   "toast.undone": "Undone.",
   "toast.undoFailed": "Couldn't undo that. Check the message in Gmail.",
   "toast.undo": "Undo",

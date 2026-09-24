@@ -114,6 +114,8 @@ function LaterChoices({
           <span className="font-normal text-muted">{formatLaterTime(laterTime(choice, now), locale)}</span>
         </button>
       ))}
+      {/* Nothing runs in the background (useLater.ts): say so before a reminder is set. */}
+      {kind === "remind" && <p className="basis-full text-xs text-muted">{t("later.remindNote")}</p>}
     </div>
   );
 }

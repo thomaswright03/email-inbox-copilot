@@ -35,26 +35,34 @@ card, confirm dialog and toast components beside it).
    Reads are retried with backoff on 429/5xx and timeouts (`lib/retry.ts`); a 401/403 from
    Gmail becomes `gmail_reconnect`, which the dashboard shows as "Reconnect Gmail".
    Nothing waits forever (`lib/timeout.ts`): each Gmail request has a 6 s timeout and the
-   whole read an 8 s deadline (then "Couldn't reach Gmail"); the Gemini triage call has 10 s
-   (then the rule-based view). The dashboard's own requests
-   (`lib/client-fetch.ts`) give up after 20 s with "taking too long" and Try again, and a
+   whole read an 8 s deadline (then "Couldn't reach Gmail"); each Gemini triage call has
+   10 s plus 200 ms per email, at most 15 s for a chunk of 25, and a load's calls run at the
+   same time (then the rule-based view). The dashboard's own requests
+   (`lib/client-fetch.ts`) give up after 25 s with "taking too long" and Try again, and a
    load that is still running after 5 s says it is taking longer than usual.
 4. **AI calls.** Only when `aiEnabled()` (both `GEMINI_API_KEY` and
    `GEMINI_PAID_TIER_PROJECT` set, i.e. the key is attested to be on Gemini's paid tier),
-   `lib/ai.ts` calls Gemini (`gemini-3.5-flash-lite`) once per load that needs it:
-   `triageToday` is one JSON call over the mail in the inbox, each email under an opaque
-   handle, that returns for every email its briefing bucket, one-line action, the date it
+   `lib/ai.ts` calls Gemini (`gemini-3.5-flash-lite`) on a load that needs it, once per
+   chunk of 25 emails in the inbox (`triageChunks`; `ceil(n / 25)` calls, at most 4 for
+   100 emails, made at the same time): `triageToday` is one JSON call over a chunk, each
+   email under an opaque handle, with an output limit and timeout sized to the chunk, that
+   returns for every email its briefing bucket, one-line action, the date it
    names (as written, and as `dueDate` YYYY-MM-DD worked out from the user's local date,
    time and zone, which the prompt states) and a spam verdict with a fixed reason. It is
    validated entry by entry with Zod in `parseTriage`; a spam flag counts only for an email
    that cleared the heuristic pre-filter (`spamCandidates`) by itself. `lib/triage.ts`
-   shares that one call between both routes: whichever asks first makes it, the other waits
+   shares those calls between both routes: whichever asks first makes them, the other waits
    for the same answer, and it is cached per user, day and language for 5 minutes and reused
    while it covers every email now in the inbox, so Done, Undo, Delete and a Refresh with no
-   new mail make no new call. The spam verdicts are also kept per message for 26 hours
+   new mail make no new call. Each chunk stands alone: a chunk whose call fails (or that
+   the budget has no room for) gets the rule-based view for just its emails
+   (`ruleBasedTriage`, listed in `ruleIds`, and its spam cards are logged as "flagged by
+   rules"); only when every call fails is the load `unavailable`. A failed or partly failed
+   triage is cached for 60 seconds (`TRIAGE_FAILURE_BACKOFF_MS`), so reloads while Gemini
+   is down make no new calls. The spam verdicts are also kept per message for 26 hours
    (`lib/verdict-cache.ts`), so the spam route reuses a known verdict without asking again.
    Every call is first reserved from the daily AI budgets (`reserveAiCalls` in
-   `lib/rate-limit.ts`). Otherwise the routes use the
+   `lib/rate-limit.ts`), one unit per chunk; if only some fit, the newest chunks get them. Otherwise the routes use the
    rule-based `lib/rules.ts` and send nothing to Gemini; each response carries `aiStatus` so
    the dashboard labels which kind it shows. If Gemini fails the routes fall back to the same
    rule-based view with `aiStatus: "unavailable"`; if the daily AI budget is used up, with
@@ -74,7 +82,9 @@ card, confirm dialog and toast components beside it).
    Gmail message and thread ids and a time; a snoozed item is hidden until then, and a due
    snooze or reminder is highlighted (with a browser notification for a reminder when the
    user allowed them, or a banner linking the thread in Gmail when the email is no longer in
-   today's list). Unsubscribe is done by the server
+   today's list). Nothing runs in the background: a snooze or reminder only comes due while
+   an Inbox Buddy tab is open in that browser (or the next time one is opened), which the
+   Remind me hint, its confirmation and the README say. Unsubscribe is done by the server
    only for RFC 8058 one-click senders (`lib/unsubscribe.ts`): one POST with
    `List-Unsubscribe=One-Click` through `lib/safe-fetch.ts`, which blocks
    private/loopback/link-local/cloud-metadata addresses at connect time and never follows
@@ -106,7 +116,7 @@ card, confirm dialog and toast components beside it).
   - `user_sessions`: Google account id → session version, used to revoke sessions.
   - `consent_records`: Google account id, `LEGAL_VERSION` and time of each acceptance.
   - `ignored_messages`: Google account id → Gmail message ids marked Not spam, kept 7 days
-    (the spam list only covers the last 24 hours).
+    (the dashboard only covers today's mail, since the user's local midnight).
   If `DATABASE_URL` isn't set these features fall back to per-instance memory or no-op;
   `GET /api/health` (requires sign-in) reports whether it's configured and reachable.
 - **Session cookie (encrypted JWT, HttpOnly, 12-hour idle lifetime)** holds the Google
@@ -134,5 +144,5 @@ card, confirm dialog and toast components beside it).
 | Interface languages (EN/ES/FR) and theme | `lib/i18n/`, `components/I18nProvider.tsx`, `lib/theme.ts`, `components/ThemeProvider.tsx` |
 | Startup configuration check | `instrumentation.ts`, `lib/config-check.ts` |
 | AI quality evals | `evals/` (see `evals/README.md`) |
-| End-to-end tests (Gmail and Gemini stand-ins) | `e2e/`, `playwright.config.ts` |
+| End-to-end tests (Gmail and Gemini stand-ins, honoured only with `E2E_STAND_INS=1`) | `e2e/`, `playwright.config.ts`, `lib/stand-ins.ts` |
 | Deployment and rollback | `docs/deployment.md` |

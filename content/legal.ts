@@ -3,7 +3,7 @@
 // whenever the substance of either document changes so users are asked
 // to re-agree.
 
-export const LEGAL_VERSION = "2026-09-24.4";
+export const LEGAL_VERSION = "2026-09-24.5";
 const LEGAL_LAST_UPDATED = "September 24, 2026";
 export const CONTACT_EMAIL = "t@thomasewright.com";
 const COMPANY_NAME = "Wright AI Solutions LLC";
@@ -31,17 +31,18 @@ When you sign in, you grant Inbox Buddy these Google permissions:
 
 Although gmail.modify permits more, Inbox Buddy uses it only to:
 
-- list the messages you received in roughly the last 24 hours (up to 50);
-- read each message's metadata: the sender, subject line, date, the sender's published unsubscribe link (the List-Unsubscribe header), which Gmail labels it has, and the short preview snippet Gmail itself generates;
+- list the messages you received today, since midnight in your own time zone (as your browser reports it), that are still in your Inbox (up to the newest 100);
+- read each message's metadata: the sender, subject line, date (the message's Date header), the sender's published unsubscribe link (the List-Unsubscribe header), which Gmail labels it has, and the short preview snippet Gmail itself generates;
 - move a message to Trash when you click Delete; and
-- remove a message from your Inbox (archive it) when you click Unsubscribe.
+- remove a message from your Inbox (archive it) when you click Done, or when you click Unsubscribe for a sender that supports one-click unsubscribe (Section 3).
 
-Inbox Buddy never retrieves full message bodies or attachments, and never composes, sends, or permanently deletes email. We access your Gmail only while you are using the Service.
+Inbox Buddy never retrieves full message bodies or attachments, and never composes, sends, or permanently deletes email. Snooze and Remind me change nothing in Gmail (Section 3). We access your Gmail only while you are using the Service.
 
 ## 3. How we use information
 
-- **Your daily summary and spam flags.** When AI features are on, the sender, subject line, and preview snippet of your recent messages are sent to Google's Gemini API to write your summary and to decide which messages look like spam. When AI features are off, Inbox Buddy instead builds a simple summary and spam list on our own servers using fixed rules (for example, messages with an unsubscribe link or common marketing wording), and nothing is sent to Gemini. The app labels which kind of result you are looking at.
-- **Taking the actions you request.** Delete moves the message to Gmail Trash. Unsubscribe, for senders that support one-click unsubscribe, sends a request to the unsubscribe web address the sender published in that message, and then archives the message (removes it from your Inbox; it stays in All Mail); for other senders it opens the sender's own unsubscribe page, or a prefilled unsubscribe email in Gmail, for you to complete yourself. Not spam takes no action on your mailbox: we remember the message's Gmail id so it isn't flagged again. Undo reverses a Delete (moves the message back out of Trash), the archive step of an Unsubscribe (moves the message back to your Inbox), or a Not spam.
+- **Your daily briefing and spam flags.** When AI features are on, the sender, subject line, preview snippet and date (the Date header) of each message in today's list, together with your current local date, time and time zone (worked out from the time zone your browser reports), are sent to Google's Gemini API, in groups of up to 25 messages. Gemini uses them to sort the messages into your briefing (needs a reply, has a deadline, FYI, or noise), to write a one-line note on what each sender wants, to pick out any date a message names (for example, a due date) and work out whether it is today, and to decide which messages look like spam. When AI features are off, or for messages Gemini could not sort, Inbox Buddy instead uses fixed rules on our own servers (for example, messages with an unsubscribe link or common marketing wording), and when AI features are off nothing is sent to Gemini. The app labels which kind of result you are looking at (in an AI briefing, a message sorted by the rules has no one-line note).
+- **Taking the actions you request.** Delete moves the message to Gmail Trash. Done archives the message (removes it from your Inbox; it stays in All Mail). Unsubscribe, for senders that support one-click unsubscribe, sends a request to the unsubscribe web address the sender published in that message, and then archives the message; for other senders it opens the sender's own unsubscribe page, or a prefilled unsubscribe email in Gmail, for you to complete yourself. Not spam takes no action on your mailbox: we remember the message's Gmail id so it isn't flagged again. Undo reverses a Delete (moves the message back out of Trash), a Done or the archive step of an Unsubscribe (moves the message back to your Inbox), or a Not spam.
+- **Snooze and Remind me.** These take no action on your mailbox (Gmail has no snooze we can use). The message's Gmail message and thread ids and the time you chose are kept only in your browser's local storage on that device, not on our servers. Snooze hides the item in Inbox Buddy until that time; Remind me highlights it then, with a browser notification if you allowed them. Both only take effect while Inbox Buddy is open in that browser: with it closed, you see them the next time you open it there. Our servers only record that Snooze was used (Section 5).
 - **Security and abuse prevention.** We count requests per account to enforce usage limits, and keep the activity log described in Section 5.
 
 We do not sell your information, use it for advertising, or use it to train or improve any AI model.
@@ -53,7 +54,7 @@ We use these service providers, each only to run the Service:
 | Provider | What it receives | Why |
 |---|---|---|
 | Google (Gmail API) | Your OAuth token and the requests described in Section 2 | Reading metadata and taking the actions you request |
-| Google (Gemini API, paid tier), only when AI features are on | Sender, subject line and preview snippet of your recent messages | Writing your summary and spam flags |
+| Google (Gemini API, paid tier), only when AI features are on | Sender, subject line, preview snippet and date of today's messages, and your current local date, time and time zone | Sorting your briefing and flagging spam (Section 3) |
 | Vercel Inc. (hosting) | All requests to the Service, and our server logs (Section 5) | Running the app |
 | Neon Inc. (database) | The stored data listed in Section 5 | Storing it |
 | The sender of a message you unsubscribe from | A request to the unsubscribe address it published | Unsubscribing you; it learns that the request was made |
@@ -70,17 +71,18 @@ Everything below is held in one database, hosted by Neon in the United States, o
 
 | Data | Where | Kept for |
 |---|---|---|
-| Your recent messages' sender, subject, preview snippet and date, and your summary or spam list | Database cache, encrypted (AES-256-GCM) | 5 minutes, so reloading the page doesn't re-read your mailbox; deleted immediately when you sign out |
-| When AI features are on, the AI spam check result for each recent message: the Gmail message id, whether it looked like spam, and the fixed reason shown on its card | Database cache, encrypted (AES-256-GCM) | 26 hours, so each message is sent to Gemini only once; deleted immediately when you sign out |
+| Today's messages' sender, subject, preview snippet and date, and your briefing (including the AI's notes and dates) or spam list | Database cache, encrypted (AES-256-GCM) | 5 minutes, so reloading the page doesn't re-read your mailbox; deleted immediately when you sign out |
+| When AI features are on, the AI spam check result for each recent message: the Gmail message id, whether it looked like spam, and the fixed reason shown on its card | Database cache, encrypted (AES-256-GCM) | 26 hours, so the spam list can show a message's result again without asking Gemini; deleted immediately when you sign out |
 | Your Google account id, name, email address, profile picture link, and Google access and refresh tokens | An encrypted cookie in your browser, not our database | Until you sign out, or 12 hours after you last used the Service |
+| Your Snooze and Remind me choices: the Gmail message and thread ids and the time you chose, under your Google account id | Your browser's local storage on that device, not our servers | Until the item comes back and you dismiss it or mark it Done, and at most 7 days after that time; clearing your browser's site data removes it (signing out does not) |
 | Your Google account id and a session number | Database (sessions table) | 30 days after your last sign-in; it lets us end all your sessions at once |
 | Record of your agreement: Google account id, the version of these documents you agreed to, and when | Database (consent records) | 3 years from when you agreed, so we can show what you agreed to |
-| Messages you marked Not spam: your Google account id and the Gmail message id | Database (Not spam list) | 7 days, long enough to cover the 24 hours of mail the Service shows |
-| Activity log: Google account id, the event, the Gmail message id where there is one, a fixed description, and the time. Events: sign-in, rejected sign-in attempt (including by people who are not users), sign-out, agreement to these documents, failed token refresh, message flagged as spam, Delete, Unsubscribe, Not spam, Undo | Database (activity log) | 90 days |
+| Messages you marked Not spam: your Google account id and the Gmail message id | Database (Not spam list) | 7 days, long enough to cover the day of mail the Service shows |
+| Activity log: Google account id, the event, the Gmail message id where there is one, a fixed description, and the time. Events: sign-in, rejected sign-in attempt (including by people who are not users), sign-out, agreement to these documents, failed token refresh, message flagged as spam, Delete, Done, Snooze, Unsubscribe, Not spam, Undo | Database (activity log) | 90 days |
 | Usage counters: your Google account id and a count per time window | Database (rate limits) | 2 days |
 | Server logs: Google account id, error messages with credentials removed, the activity-log events above, and security events (for example a rejected session, a usage limit reached, or a blocked request) | Vercel logs | The runtime-log retention of our Vercel plan |
 
-None of the stored data, the activity log included, contains the content of your messages outside the 5-minute encrypted cache.
+None of the stored data, the activity log included, contains the content of your messages outside the 5-minute encrypted cache; the Done and Snooze events, like the others, hold only the Gmail message id and a fixed description.
 
 Messages you Delete stay in Gmail Trash under Gmail's own rules. We do not control or keep copies of your mailbox.
 
@@ -132,20 +134,21 @@ Inbox Buddy is not intended for mailboxes that carry attorney-client privileged,
 
 Inbox Buddy connects to your Gmail account and:
 
-- Generates a summary of recent messages, written by AI when AI features are on, or built from simple rules when they are off
+- Generates a briefing of today's inbox messages (what needs a reply, what has a deadline, and so on), sorted by AI when AI features are on, or by simple rules when they are off
 - Identifies inbox messages that are likely spam and displays them as cards
-- Lets you Delete a message (moves it to Gmail Trash), Unsubscribe from a sender (for senders that support one-click unsubscribe, sends a request to that sender's own published unsubscribe address, then archives the message; for other senders, opens their unsubscribe page or a prefilled unsubscribe email for you to complete), or mark a card Not spam (no action on your mailbox; the message isn't flagged again)
+- Lets you mark a briefing item Done (archives the message), Snooze it or set a reminder (only in Inbox Buddy, in your browser; nothing changes in Gmail, and a reminder only appears while Inbox Buddy is open in that browser), Delete a message (moves it to Gmail Trash), Unsubscribe from a sender (for senders that support one-click unsubscribe, sends a request to that sender's own published unsubscribe address, then archives the message; for other senders, opens their unsubscribe page or a prefilled unsubscribe email for you to complete), or mark a card Not spam (no action on your mailbox; the message isn't flagged again)
 
 ## 3. AI-generated content — important disclaimer
 
-Summaries and spam classifications are generated automatically, by a third-party AI model or by simple rules (see our Privacy Policy), and **may be incomplete, inaccurate, miscategorized, or may omit information — including time-sensitive, urgent, or important messages.**
+Briefings (including how messages are sorted, the one-line notes, and any dates, deadlines or "due today" labels) and spam classifications are generated automatically, by a third-party AI model or by simple rules (see our Privacy Policy), and **may be incomplete, inaccurate, miscategorized, or may omit information — including time-sensitive, urgent, or important messages.** Snoozed items and reminders only come back while Inbox Buddy is open in the browser where you set them, and are lost if that browser's site data is cleared.
 
-**You are solely responsible for reviewing your own inbox for anything time-sensitive, urgent, legally significant, or otherwise important. Do not rely on Inbox Buddy's summary as your only source of information about your email.** This is especially important if you use Inbox Buddy for work, where missing a communication could have serious consequences.
+**You are solely responsible for reviewing your own inbox for anything time-sensitive, urgent, legally significant, or otherwise important. Do not rely on Inbox Buddy's briefing or reminders as your only source of information about your email.** This is especially important if you use Inbox Buddy for work, where missing a communication could have serious consequences.
 
 ## 4. Actions you authorize
 
-By clicking Delete or Unsubscribe, you are directly instructing us to take that action on your Gmail account through Google's API, on your behalf, immediately:
+By clicking Delete, Done or Unsubscribe, you are directly instructing us to take that action on your Gmail account through Google's API, on your behalf, immediately:
 
+- **Done** archives the message (removes it from your Inbox; it stays in All Mail). Inbox Buddy offers Undo for a few seconds afterwards; after that, move it back from All Mail in Gmail.
 - **Delete** moves the message to your Gmail Trash. It is not permanently destroyed at that moment (Gmail's own Trash retention applies). Inbox Buddy offers Undo for a few seconds afterwards; after that, restore it from Gmail Trash.
 - **Unsubscribe**, for senders that support one-click unsubscribe, sends a request to the unsubscribe address the sender published in their message and, if the sender accepts it, archives that message (removes it from your Inbox; it stays in All Mail). For other senders, Inbox Buddy opens the sender's own unsubscribe page or a prefilled unsubscribe email, and you complete it there. We do not control, and cannot guarantee, whether the sender actually stops emailing you, and the unsubscribe request cannot be undone (Undo only moves the message back to your Inbox).
 

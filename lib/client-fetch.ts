@@ -8,10 +8,11 @@ export type FetchResult<T> =
   | { ok: true; status: number; data: T }
   | { ok: false; status: number; code: string };
 
-// Longer than the server's own bounds on Gmail and Gemini (lib/gmail.ts,
-// lib/ai.ts), so a slow answer still arrives, but a hung one never leaves
-// the dashboard waiting forever.
-export const FETCH_TIMEOUT_MS = 20_000;
+// Longer than the server's own bounds on Gmail and Gemini together (8 s
+// for the Gmail read in lib/gmail.ts, then at most 15 s for the triage calls
+// in lib/ai.ts, which run at the same time), so a slow answer still arrives,
+// but a hung one never leaves the dashboard waiting forever.
+export const FETCH_TIMEOUT_MS = 25_000;
 
 export async function fetchJson<T>(url: string, init?: RequestInit, timeoutMs = FETCH_TIMEOUT_MS): Promise<FetchResult<T>> {
   const controller = new AbortController();

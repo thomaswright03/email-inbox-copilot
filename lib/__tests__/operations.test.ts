@@ -38,6 +38,18 @@ describe("productionConfigProblems", () => {
     expect(problems.join("\n")).toMatch(/GEMINI_API_ROOT_URL/);
     expect(problems.join("\n")).toMatch(/MIGRATION_DATABASE_URL/);
   });
+
+  it("flags the end-to-end test mode and its stand-in URLs, which are ignored outside it", () => {
+    const problems = productionConfigProblems({
+      ...GOOD_ENV,
+      E2E_STAND_INS: "1",
+      GEMINI_API_ROOT_URL: "https://gemini-proxy.example/",
+    } as unknown as NodeJS.ProcessEnv);
+    expect(problems).toEqual([
+      "E2E_STAND_INS is a test-only setting and must not be set",
+      "GEMINI_API_ROOT_URL is a test-only setting and must not be set (it is ignored without E2E_STAND_INS=1)",
+    ]);
+  });
 });
 
 describe("startup check (instrumentation.ts)", () => {
@@ -53,6 +65,20 @@ describe("startup check (instrumentation.ts)", () => {
     await register();
     const lines = error.mock.calls.map(([line]) => String(line));
     expect(lines.some((l) => l.includes('"kind":"config_invalid"') && l.includes("DATABASE_URL is required"))).toBe(true);
+    error.mockRestore();
+  });
+
+  it("raises an alert when a production server starts in the end-to-end tests' stand-in mode", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv("NEXT_RUNTIME", "nodejs");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("E2E_STAND_INS", "1");
+    vi.stubEnv("GEMINI_API_ROOT_URL", "http://127.0.0.1:4011");
+    vi.stubEnv("ALERT_WEBHOOK_URL", "");
+    const { register } = await import("@/instrumentation");
+    await register();
+    const lines = error.mock.calls.map(([line]) => String(line)).filter((l) => l.includes('"kind":"config_invalid"'));
+    expect(lines.some((l) => l.includes("E2E_STAND_INS is a test-only setting") && l.includes("GEMINI_API_ROOT_URL is a test-only setting"))).toBe(true);
     error.mockRestore();
   });
 

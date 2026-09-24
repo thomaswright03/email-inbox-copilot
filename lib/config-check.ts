@@ -8,8 +8,13 @@ export function productionConfigProblems(env: NodeJS.ProcessEnv = process.env): 
     problems.push("DATABASE_URL is required: without it no user can accept the Terms, and AI budgets fail closed");
   }
   if (!env.ALLOWED_EMAILS?.trim()) problems.push("ALLOWED_EMAILS is empty, so nobody can sign in");
-  if (env.GMAIL_API_ROOT_URL) problems.push("GMAIL_API_ROOT_URL is a test-only setting and must not be set");
-  if (env.GEMINI_API_ROOT_URL) problems.push("GEMINI_API_ROOT_URL is a test-only setting and must not be set");
+  // Test-only stand-ins for Google (lib/stand-ins.ts). They are ignored
+  // outside the end-to-end tests' own mode, but any of them on a production
+  // server is a mistake worth an alert.
+  if (env.E2E_STAND_INS) problems.push("E2E_STAND_INS is a test-only setting and must not be set");
+  for (const name of ["GMAIL_API_ROOT_URL", "GEMINI_API_ROOT_URL"] as const) {
+    if (env[name]) problems.push(`${name} is a test-only setting and must not be set (it is ignored without E2E_STAND_INS=1)`);
+  }
   if (env.MIGRATION_DATABASE_URL) problems.push("MIGRATION_DATABASE_URL (the owner connection) must not be set at runtime");
   return problems;
 }

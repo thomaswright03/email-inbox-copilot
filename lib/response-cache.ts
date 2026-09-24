@@ -31,14 +31,19 @@ const inflight = new Map<string, Promise<unknown>>();
 // next request on *any* instance can skip straight to L1 or L2 instead of
 // re-hitting Gmail/Gemini.
 //
-// `reuse` can turn down a cached value (it is then fetched again), and
-// `store` can keep a fetched value out of the cache (e.g. a failure that
-// should be retried on the next request).
+// `reuse` can turn down a cached value (it is then fetched again), `store`
+// can keep a fetched value out of the cache (e.g. a failure that should be
+// retried on the next request), and `ttl` can keep a fetched value for
+// less (or more) time than `ttlMs` (e.g. a failure kept only briefly).
 export async function getOrSetCached<T>(
   key: string,
   ttlMs: number,
   fetcher: () => Promise<T>,
-  { reuse = () => true, store = () => true }: { reuse?: (value: T) => boolean; store?: (value: T) => boolean } = {}
+  {
+    reuse = () => true,
+    store = () => true,
+    ttl = () => ttlMs,
+  }: { reuse?: (value: T) => boolean; store?: (value: T) => boolean; ttl?: (value: T) => number } = {}
 ): Promise<T> {
   const memHit = getCached<T>(key);
   if (memHit !== undefined && reuse(memHit)) return memHit;
@@ -49,14 +54,15 @@ export async function getOrSetCached<T>(
   const run = (async () => {
     const dbHit = memHit === undefined ? await getCachedDb<T>(key) : undefined;
     if (dbHit !== undefined && reuse(dbHit)) {
-      setCached(key, dbHit, ttlMs);
+      setCached(key, dbHit, ttl(dbHit));
       return dbHit;
     }
 
     const value = await fetcher();
     if (store(value)) {
-      setCached(key, value, ttlMs);
-      await setCachedDb(key, value, ttlMs);
+      const keepFor = ttl(value);
+      setCached(key, value, keepFor);
+      await setCachedDb(key, value, keepFor);
     }
     return value;
   })();

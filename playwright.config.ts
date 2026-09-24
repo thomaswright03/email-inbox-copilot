@@ -13,6 +13,9 @@ const SERVER_ENV = {
   AUTH_GOOGLE_ID: "e2e-client-id",
   AUTH_GOOGLE_SECRET: "e2e-client-secret",
   ALLOWED_EMAILS: "tester@example.com",
+  // Turns on the Google stand-ins below (lib/stand-ins.ts); without it the
+  // app ignores GMAIL_API_ROOT_URL and GEMINI_API_ROOT_URL.
+  E2E_STAND_INS: "1",
   GMAIL_API_ROOT_URL: `http://127.0.0.1:${STUB_PORT}/`,
   DATABASE_URL: "",
 };

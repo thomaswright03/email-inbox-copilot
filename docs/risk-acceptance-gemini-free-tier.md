@@ -15,13 +15,20 @@
 > `aiEnabled`); otherwise it uses rule-based results (`lib/rules.ts`). Customer scope
 > (no privileged, medical or financial-account mailboxes) now lives in the Terms of
 > Service section 1 and the Privacy Policy section 1. The paid-tier record and signature
-> belong in `docs/compliance-records.md`. The original text is kept below for the record.
+> belong in `docs/compliance-records.md`. What the app now sends to Gemini (paid tier only)
+> is listed there and in the Privacy Policy sections 3 and 4: the sender, subject, snippet
+> and Date header of today's inbox messages, with the user's local date, time and time
+> zone. The original text below, including its description of what was sent, is kept for
+> the record only.
 
 ## 1. The risk being accepted
 
 Inbox Buddy sends the sender, subject line, and short preview snippet of each processed
 email to Google's Gemini API for AI summarization and spam classification. As of this
 memo's date, this integration uses Gemini's standard, no-cost API tier.
+
+*[2026-09-24: out of date. The app now also sends each message's Date header and the
+user's local date, time and time zone, and only on the paid tier; see the note above.]*
 
 Under Google's published terms for that tier, Google may use content submitted through it
 to improve its own products. This differs from Google's paid tiers, which carry a

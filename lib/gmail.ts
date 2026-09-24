@@ -2,6 +2,7 @@ import { google, gmail_v1 } from "googleapis";
 import { toSafeError } from "./log";
 import { withRetry } from "./retry";
 import { deadlineSignal, withTimeout } from "./timeout";
+import { standInUrl } from "./stand-ins";
 
 export type ParsedEmail = {
   id: string;
@@ -32,12 +33,12 @@ const PAGE_SIZE = 100;
 const GET_CONCURRENCY = 10;
 
 // GMAIL_API_ROOT_URL points the client at a stand-in Gmail API for the
-// end-to-end tests (e2e/). It must never be set in a real deployment;
-// instrumentation.ts raises an alert if it is set in production.
+// end-to-end tests (e2e/), and only in that test mode (lib/stand-ins.ts):
+// anywhere else it is ignored, so the access token only goes to Google.
 function getGmailClient(accessToken: string): gmail_v1.Gmail {
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
-  const rootUrl = process.env.GMAIL_API_ROOT_URL;
+  const rootUrl = standInUrl("GMAIL_API_ROOT_URL");
   return google.gmail({ version: "v1", auth, ...(rootUrl ? { rootUrl } : {}) });
 }
 

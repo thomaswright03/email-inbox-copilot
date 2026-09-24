@@ -86,30 +86,44 @@ Every environment has its own value for every secret (see `SECURITY.md`, "Enviro
 | `GEMINI_PAID_TIER_PROJECT` | the paid project id, or empty (AI off) | same | empty unless the key is paid |
 | `ALERT_WEBHOOK_URL` | Slack/Discord incoming webhook (https) | optional | empty |
 | `AUDIT_RETENTION_DAYS` | optional, default 90 | optional | optional |
-| `AI_CALLS_PER_USER_PER_DAY` / `AI_CALLS_GLOBAL_PER_DAY` | optional, defaults 250 / 3000 (see "AI budget" below) | optional | optional |
+| `AI_CALLS_PER_USER_PER_DAY` / `AI_CALLS_GLOBAL_PER_DAY` | optional, defaults 500 / 5000 (see "AI budget" below) | optional | optional |
 | `AUTH_TRUST_HOST` | only on hosts other than Vercel: `true` when a proxy you control sets the Host header | same | not needed |
 
-Never set these at runtime: `MIGRATION_DATABASE_URL` (the owner connection),
-`GMAIL_API_ROOT_URL` and `GEMINI_API_ROOT_URL` (end-to-end tests only). The startup check
-flags all three.
+Never set these at runtime: `MIGRATION_DATABASE_URL` (the owner connection), and the
+end-to-end tests' `E2E_STAND_INS`, `GMAIL_API_ROOT_URL` and `GEMINI_API_ROOT_URL`. The
+two stand-in URLs are ignored unless `E2E_STAND_INS=1`, never apply on Vercel, and only
+ever point at this machine (`lib/stand-ins.ts`), so a stray value can't send a Google token
+or the Gemini key anywhere but Google; the startup check still flags all four.
 
 ### AI budget
 
 Two daily caps bound Gemini spend (`lib/rate-limit.ts`): `AI_CALLS_PER_USER_PER_DAY`
-(default **250**) and `AI_CALLS_GLOBAL_PER_DAY` for the whole deployment (default
-**3000**). Only model calls actually made are counted.
+(default **500**) and `AI_CALLS_GLOBAL_PER_DAY` for the whole deployment (default
+**5000**). Each triage call counts once, when it is made (its automatic retries don't
+count again); a call the budget has no room for is not made.
+
+A dashboard load that needs the model triages today's inbox in chunks of 25 emails, one
+call per chunk, made at the same time (`lib/triage.ts`): **ceil(emails / 25) calls, so 1
+for up to 25 emails and at most 4 for the 100 a load reads.** The summary and spam tabs
+share those calls. A chunk whose call fails, or that the budget has no room for, shows the
+rule-based view for just its emails; a failed load is kept for 60 seconds so reloading
+doesn't make new calls.
 
 How the defaults are sized:
 
 | Per user, per day | Calls |
 |---|---|
-| Triage: one call sorts the briefing and gives every email its spam verdict. It is made on a load only when mail arrived since the last one or the 5-minute cache ran out (Done, Undo, Delete and a Refresh with no new mail reuse it), plus once per summary language. About 60 such loads on a busy day | ~60 |
-| **Heavy day** | **~60** |
+| Triage loads: made only when mail arrived since the last one or the cached triage ran out (5 minutes; Done, Undo, Delete and a Refresh with no new mail reuse it), plus once per summary language. About 60 such loads on a busy day | 60 loads |
+| Calls per load: 1 per 25 emails in today's inbox, growing through the day | 1 to 4 |
+| **Heavy day** (inbox filling up to 100 through the day) | **~150** |
+| **Worst case** (100 emails in the inbox all day) | **240** |
 
-The per-user default is about four times a heavy day. The deployment default covers 20 partners
-having a heavy day at the same time (20 × ~60 = 1200) with plenty of headroom; raise it by
-about 150 per partner beyond 20. At flash-lite-class prices (see the README) a full
-deployment budget costs on the order of a few dollars a day, and much less in practice.
+The per-user default is about twice the worst case. The deployment default covers 20
+partners having a heavy day at the same time (20 × ~150 = 3000) with headroom; raise it by
+about 250 per partner beyond 20. Each call is small (at most 25 emails' sender, subject,
+preview and date in, a line per email out), so at flash-lite-class prices (see the README)
+a call costs a fraction of a cent; check the current price for the full deployment budget
+before raising the caps.
 
 **When the day resets:** the window is the **UTC day**, so budgets come back at 00:00 UTC
 (for example 8 PM EDT or 5 PM PDT, 1 or 2 AM in Western Europe). When a budget runs out,

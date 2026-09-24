@@ -27,13 +27,17 @@ type AiVerdicts = {
   aiStatus: AiStatus;
   // null: use the rule-based flags instead.
   verdicts: SpamVerdict[] | null;
+  // Emails among `verdicts` flagged by the rules, because their triage call
+  // failed or didn't fit in the budget (lib/triage.ts).
+  ruleIds?: Set<string>;
   aiResetsAt?: string;
 };
 
 // Gemini verdicts for the heuristic candidates. They come from the triage
-// call the summary route makes for the same inbox (lib/triage.ts), so the
+// calls the summary route makes for the same inbox (lib/triage.ts), so the
 // spam list costs no model call of its own; verdicts already known from an
-// earlier triage (lib/verdict-cache.ts) are reused without asking again.
+// earlier triage (lib/verdict-cache.ts) are reused without asking again. A
+// candidate whose triage call failed gets its rule-based flag (`ruleIds`).
 async function aiVerdicts(userId: string, day: LocalDay, language: SummaryLanguage, emails: ParsedEmail[]): Promise<AiVerdicts> {
   const candidates = spamCandidates(emails);
   const known = await cachedVerdicts(userId, MODEL);
@@ -44,9 +48,14 @@ async function aiVerdicts(userId: string, day: LocalDay, language: SummaryLangua
   if (triage.aiStatus === "budget") return { aiStatus: "budget", verdicts: null, aiResetsAt: triage.aiResetsAt };
   if (triage.aiStatus !== "generated") return { aiStatus: "unavailable", verdicts: null };
   const fresh = new Map(triage.verdicts.map((v) => [v.id, v]));
+  const ruleIds = new Set(triage.ruleIds ?? []);
   return {
     aiStatus: "generated",
-    verdicts: candidates.flatMap((e) => (fresh.has(e.id) ? [fresh.get(e.id)!] : known.has(e.id) ? [reuse(e)] : [])),
+    // A verdict the model gave earlier beats a rule-based stand-in.
+    verdicts: candidates.flatMap((e) =>
+      fresh.has(e.id) && !(ruleIds.has(e.id) && known.has(e.id)) ? [fresh.get(e.id)!] : known.has(e.id) ? [reuse(e)] : []
+    ),
+    ruleIds: new Set(candidates.filter((e) => ruleIds.has(e.id) && !known.has(e.id)).map((e) => e.id)),
   };
 }
 
@@ -75,8 +84,12 @@ async function buildSpamPayload(accessToken: string, userId: string, day: LocalD
   // classification rows every time a cached response is served.
   // The detail records who flagged the card, so the share of AI flags that
   // users mark Not spam can be measured (scripts/ai-feedback.mjs).
-  const detail = ai.verdicts ? "flagged by AI" : "flagged by rules";
-  await Promise.all(flashcards.map((card) => logAuditEvent({ userId, action: "classified_spam", messageId: card.id, detail })));
+  const byRules = (id: string) => !ai.verdicts || (ai.ruleIds?.has(id) ?? false);
+  await Promise.all(
+    flashcards.map((card) =>
+      logAuditEvent({ userId, action: "classified_spam", messageId: card.id, detail: byRules(card.id) ? "flagged by rules" : "flagged by AI" })
+    )
+  );
 
   return {
     aiStatus: ai.aiStatus,

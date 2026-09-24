@@ -1,5 +1,6 @@
 // A stand-in for the Gmail REST API, used only by the end-to-end tests.
-// The app under test is pointed at it with GMAIL_API_ROOT_URL (lib/gmail.ts).
+// The app under test is pointed at it with GMAIL_API_ROOT_URL, which the
+// app honours only with E2E_STAND_INS=1 (lib/stand-ins.ts).
 // Every access token gets its own copy of the inbox below, so tests don't
 // share state; the token "revoked" answers 401 like a revoked Google grant.
 //

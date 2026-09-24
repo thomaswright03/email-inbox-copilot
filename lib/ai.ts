@@ -5,20 +5,29 @@ import { SPAM_REASONS, type SpamReason } from "./spam-reasons";
 import { emit, toSafeError } from "./log";
 import { withRetry } from "./retry";
 import { withTimeout } from "./timeout";
+import { standInUrl } from "./stand-ins";
 import { BRIEFING_BUCKETS, MODEL, TRIAGE_RESPONSE_SCHEMA, TRIAGE_SYSTEM_INSTRUCTION, triagePrompt } from "./ai-prompts";
 
 export { MODEL, BRIEFING_BUCKETS };
 
+// Google's Gemini API endpoint. It is always passed to the client
+// explicitly, with Vertex AI off, so no environment variable the SDK reads
+// by itself (GOOGLE_GEMINI_BASE_URL, GOOGLE_GENAI_USE_VERTEXAI) can send
+// GEMINI_API_KEY and Gmail data anywhere else.
+export const GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/";
+
 // Created on first use, so importing this module (builds, AI-off
 // deployments, tests) never constructs a client or warns about a missing key.
 // GEMINI_API_ROOT_URL points the client at a stand-in Gemini API for the
-// end-to-end tests (e2e/gemini-stub.mjs), like GMAIL_API_ROOT_URL for
-// Gmail. It must never be set in a real deployment; instrumentation.ts
-// raises an alert if it is set in production.
+// end-to-end tests (e2e/gemini-stub.mjs), and only in their explicit test
+// mode (lib/stand-ins.ts); anywhere else it is ignored.
 let client: GoogleGenAI | null = null;
 function gemini(): GoogleGenAI {
-  const baseUrl = process.env.GEMINI_API_ROOT_URL;
-  client ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, ...(baseUrl ? { httpOptions: { baseUrl } } : {}) });
+  client ??= new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY,
+    vertexai: false,
+    httpOptions: { baseUrl: standInUrl("GEMINI_API_ROOT_URL") ?? GEMINI_API_BASE_URL },
+  });
   return client;
 }
 
@@ -51,7 +60,12 @@ export type AiFeature = "triage";
 // The model's text and why it stopped ("STOP", or "MAX_TOKENS" when it hit
 // maxOutputTokens mid-answer). A bare string is a reply that finished.
 type ModelReply = { text: string | undefined; finishReason?: string };
-type Generate = (prompt: string, config: GenerateConfig, feature: AiFeature) => Promise<ModelReply | string | undefined>;
+type Generate = (
+  prompt: string,
+  config: GenerateConfig,
+  feature: AiFeature,
+  options: { timeoutMs: number }
+) => Promise<ModelReply | string | undefined>;
 
 function asReply(reply: ModelReply | string | undefined): ModelReply {
   return typeof reply === "object" ? reply : { text: reply };
@@ -70,15 +84,27 @@ function logAiUsage(fields: {
   emit("info", { level: "ai_usage", model: MODEL, ...fields });
 }
 
-// How long the triage call may take, retries included: a timed-out call is
-// treated like any transient error and retried only while the budget
-// allows. It reads up to 100 emails.
-export const GEMINI_TIMEOUT_MS = 10_000;
+// The day's inbox (up to 100 emails) is triaged in calls of at most this
+// many emails, made at the same time (lib/triage.ts), so each answer is
+// short enough to arrive quickly and a failed call only costs its own emails.
+export const TRIAGE_CHUNK_SIZE = 25;
 
-const geminiGenerate: Generate = async (prompt, config, feature) => {
+// How long one triage call may take, retries included: a timed-out call is
+// treated like any transient error and retried only while this allows. The
+// answer grows by a line per email, so the time does too: 10 s plus 200 ms
+// per email, at most GEMINI_TIMEOUT_MS (a full chunk of 25). The calls for
+// one load run concurrently, so the load waits at most GEMINI_TIMEOUT_MS.
+export const GEMINI_TIMEOUT_MS = 15_000;
+const GEMINI_BASE_TIMEOUT_MS = 10_000;
+const GEMINI_TIMEOUT_PER_EMAIL_MS = 200;
+
+export function triageTimeoutMs(emailCount: number): number {
+  return Math.min(GEMINI_TIMEOUT_MS, GEMINI_BASE_TIMEOUT_MS + GEMINI_TIMEOUT_PER_EMAIL_MS * Math.max(0, emailCount));
+}
+
+const geminiGenerate: Generate = async (prompt, config, feature, { timeoutMs }) => {
   if (!aiEnabled()) throw new AiDisabledError();
   const started = Date.now();
-  const timeoutMs = GEMINI_TIMEOUT_MS;
   try {
     const response = await withRetry(
       () =>
@@ -160,8 +186,23 @@ export function stripLinksAndImages(markdown: string): string {
     .replace(/[<>]/g, "");
 }
 
-// Room for a line on each of the (up to 100) emails in the window.
-const TRIAGE_MAX_OUTPUT_TOKENS = 12_288;
+// Room for a line on each email in the call (up to TRIAGE_CHUNK_SIZE),
+// in any of the summary languages, plus the JSON around them.
+const TRIAGE_OUTPUT_TOKENS_PER_EMAIL = 128;
+const TRIAGE_OUTPUT_TOKENS_BASE = 256;
+
+export function triageMaxOutputTokens(emailCount: number): number {
+  return TRIAGE_OUTPUT_TOKENS_BASE + TRIAGE_OUTPUT_TOKENS_PER_EMAIL * Math.max(0, emailCount);
+}
+
+// The day's inbox split into the calls it takes to triage it, newest
+// emails first: ceil(n / TRIAGE_CHUNK_SIZE) calls, so at most 4 for the
+// 100 emails a load reads.
+export function triageChunks<T>(emails: T[]): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < emails.length; i += TRIAGE_CHUNK_SIZE) chunks.push(emails.slice(i, i + TRIAGE_CHUNK_SIZE));
+  return chunks;
+}
 
 export type BriefingBucket = (typeof BRIEFING_BUCKETS)[number];
 
@@ -218,9 +259,9 @@ function normalizeVerdict(isSpam: boolean, reason: SpamReason): { isSpam: boolea
 // repeated handle is dropped. Emails the model left out are listed as FYI
 // and not spam, so nothing in the inbox silently disappears.
 //
-// All emails share one call, so a spam flag is only honoured for an email
-// that cleared the heuristic pre-filter by itself (spamCandidates): text
-// planted in one email can't get an ordinary message flagged, and the
+// All emails in a chunk share one call, so a spam flag is only honoured for
+// an email that cleared the heuristic pre-filter by itself (spamCandidates):
+// text planted in one email can't get an ordinary message flagged, and the
 // verdict only ever drives a card the user still has to act on.
 export function parseTriage(raw: unknown, handles: Map<string, ParsedEmail>): Triage | null {
   if (typeof raw !== "object" || raw === null || !Array.isArray((raw as { items?: unknown }).items)) return null;
@@ -252,13 +293,15 @@ export function parseTriage(raw: unknown, handles: Map<string, ParsedEmail>): Tr
   };
 }
 
-// The triage: each email still in the inbox is sorted into reply /
+// One triage call: each email still in the inbox is sorted into reply /
 // deadline / fyi / noise with a one-line action and any date it names, and
-// gets a spam verdict, all in one JSON call. `now` is the user's local date
-// and time (lib/local-day.ts describeNow). Returns null when there is
-// nothing to sort or the model produced nothing usable; the caller then
-// falls back to the rule-based views. A reply cut off at the output limit
-// isn't valid JSON, so it is discarded like any other malformed answer.
+// gets a spam verdict, all in one JSON call. lib/triage.ts passes one chunk
+// (triageChunks) per call; the output limit and timeout scale with the
+// number of emails. `now` is the user's local date and time
+// (lib/local-day.ts describeNow). Returns null when there is nothing to
+// sort or the model produced nothing usable; the caller then falls back to
+// the rule-based views for these emails. A reply cut off at the output
+// limit isn't valid JSON, so it is discarded like any other malformed answer.
 export async function triageToday(
   emails: ParsedEmail[],
   { language = "en", now }: { language?: SummaryLanguage; now: string }
@@ -276,9 +319,10 @@ export async function triageToday(
         systemInstruction: TRIAGE_SYSTEM_INSTRUCTION,
         responseMimeType: "application/json",
         responseJsonSchema: TRIAGE_RESPONSE_SCHEMA,
-        maxOutputTokens: TRIAGE_MAX_OUTPUT_TOKENS,
+        maxOutputTokens: triageMaxOutputTokens(inbox.length),
       },
-      "triage"
+      "triage",
+      { timeoutMs: triageTimeoutMs(inbox.length) }
     )
   );
   if (!text) return null;
@@ -328,7 +372,8 @@ export function spamCandidates(emails: ParsedEmail[]): ParsedEmail[] {
 }
 
 // The spam verdicts one triage call gives the heuristic candidates among
-// `emails` (the evals use this); throws if the model call fails.
+// `emails` (the evals use this; pass at most TRIAGE_CHUNK_SIZE emails, as
+// production does); throws if the model call fails.
 export async function classifySpam(emails: ParsedEmail[], now = "an unspecified day"): Promise<SpamVerdict[]> {
   const candidates = new Set(spamCandidates(emails).map((e) => e.id));
   if (candidates.size === 0) return [];

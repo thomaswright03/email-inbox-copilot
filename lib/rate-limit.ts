@@ -1,5 +1,6 @@
 import { getSql } from "./db";
 import { logError, logSecurityEvent } from "./log";
+import { standInUrl } from "./stand-ins";
 
 // Fixed-window rate limiting. With DATABASE_URL set the counters live in
 // Postgres, so limits hold across serverless instances and cold starts;
@@ -26,23 +27,25 @@ export const RATE_LIMITS = {
   actions: { name: "actions", limit: envInt("RATE_LIMIT_ACTIONS_PER_MINUTE", 30), windowMs: MINUTE },
   // Gemini calls are only made on a cache miss; these cap what one account,
   // and the whole deployment, can spend in a day. Sizing (docs/deployment.md
-  // "AI budget"): a dashboard load makes at most one call (the triage, which
-  // sorts the briefing and checks spam together), and only when new mail
-  // arrived or the cached triage expired; a heavy user makes about 60 such
-  // loads a day, plus one per summary language; the per-user default leaves
-  // room for four times that.
-  // The deployment-wide default covers 20 such users with headroom. The
-  // window is the UTC day (resets at 00:00 UTC).
-  aiPerUser: { name: "ai-user", limit: envInt("AI_CALLS_PER_USER_PER_DAY", 250), windowMs: DAY, requireShared: true },
-  aiGlobal: { name: "ai-global", limit: envInt("AI_CALLS_GLOBAL_PER_DAY", 3000), windowMs: DAY, requireShared: true },
+  // "AI budget"): a dashboard load that needs the model makes one triage
+  // call per 25 emails in today's inbox (lib/triage.ts; at most 4 for the
+  // 100 emails a load reads), and only when new mail arrived or the cached
+  // triage expired. A heavy user makes about 60 such loads a day, plus one
+  // per summary language: ~150 calls as the inbox fills up during the day,
+  // 240 if it holds 100 emails all day. The per-user default is about twice
+  // that worst case. The deployment-wide default covers 20 such users with
+  // headroom. The window is the UTC day (resets at 00:00 UTC).
+  aiPerUser: { name: "ai-user", limit: envInt("AI_CALLS_PER_USER_PER_DAY", 500), windowMs: DAY, requireShared: true },
+  aiGlobal: { name: "ai-global", limit: envInt("AI_CALLS_GLOBAL_PER_DAY", 5000), windowMs: DAY, requireShared: true },
 } satisfies Record<string, RateLimitRule>;
 
 // In production a requireShared rule is only counted in Postgres. The one
-// exception is a Gemini stand-in (GEMINI_API_ROOT_URL, end-to-end tests
-// only, flagged at startup in production): no real Gemini spend can happen,
-// so the budget may be counted in memory.
+// exception is the end-to-end tests' Gemini stand-in, which is only in use
+// in their explicit test mode (lib/stand-ins.ts: E2E_STAND_INS=1, not on
+// Vercel, a loopback URL): no real Gemini spend can happen, so the budget
+// may be counted in memory. GEMINI_API_ROOT_URL alone changes nothing.
 function requiresSharedCounter(rule: RateLimitRule): boolean {
-  return rule.requireShared === true && process.env.NODE_ENV === "production" && !process.env.GEMINI_API_ROOT_URL;
+  return rule.requireShared === true && process.env.NODE_ENV === "production" && !standInUrl("GEMINI_API_ROOT_URL");
 }
 
 export type RateLimitResult = { allowed: boolean; retryAfterSeconds: number };

@@ -172,13 +172,26 @@ describe("fetchRecentMessages", () => {
     expect(api.list).toHaveBeenCalledTimes(1);
   });
 
-  it("points at a stand-in Gmail API only when GMAIL_API_ROOT_URL is set", async () => {
+  it("points at a stand-in Gmail API only in the end-to-end tests' mode (E2E_STAND_INS=1)", async () => {
     api.list.mockResolvedValue({ data: {} });
+    const google = expect.not.objectContaining({ rootUrl: expect.anything() });
     await fetchRecentMessages("tok", SINCE);
-    expect(gmailFactory).toHaveBeenLastCalledWith(expect.not.objectContaining({ rootUrl: expect.anything() }));
+    expect(gmailFactory).toHaveBeenLastCalledWith(google);
+    // The URL alone is ignored, so a stray setting can't send the token elsewhere.
     vi.stubEnv("GMAIL_API_ROOT_URL", "http://127.0.0.1:9999/");
     await fetchRecentMessages("tok", SINCE);
+    expect(gmailFactory).toHaveBeenLastCalledWith(google);
+    vi.stubEnv("E2E_STAND_INS", "1");
+    await fetchRecentMessages("tok", SINCE);
     expect(gmailFactory).toHaveBeenLastCalledWith(expect.objectContaining({ rootUrl: "http://127.0.0.1:9999/" }));
+    // Never a host other than this machine, and never on Vercel.
+    vi.stubEnv("GMAIL_API_ROOT_URL", "https://gmail-proxy.example/");
+    await fetchRecentMessages("tok", SINCE);
+    expect(gmailFactory).toHaveBeenLastCalledWith(google);
+    vi.stubEnv("GMAIL_API_ROOT_URL", "http://127.0.0.1:9999/");
+    vi.stubEnv("VERCEL", "1");
+    await fetchRecentMessages("tok", SINCE);
+    expect(gmailFactory).toHaveBeenLastCalledWith(google);
     vi.unstubAllEnvs();
   });
 });
