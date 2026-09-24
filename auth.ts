@@ -38,7 +38,7 @@ export function isEmailAllowed(
     .some((entry) => (entry.startsWith("@") ? normalized.endsWith(entry) : normalized === entry));
 }
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+export const { handlers } = NextAuth({
   useSecureCookies: USE_SECURE_COOKIES,
   cookies: {
     sessionToken: {

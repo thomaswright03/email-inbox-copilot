@@ -57,7 +57,7 @@ export async function requireSession(req: Request): Promise<GoogleSession | Next
 
 // CSRF defence for state-changing requests, on top of the SameSite=Lax
 // session cookie: the request must come from this app's own origin.
-export function isSameOriginRequest(req: Request): boolean {
+function isSameOriginRequest(req: Request): boolean {
   const origin = req.headers.get("origin");
   if (origin) {
     const host = req.headers.get("host") ?? new URL(req.url).host;

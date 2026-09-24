@@ -143,12 +143,12 @@ export const pinnedLookup: LookupFunction = (hostname, options, callback) => {
 };
 
 export type HopResponse = { status: number; location: string | null };
-export type HopInit = { method: "GET" | "POST"; body?: string; contentType?: string };
+type HopInit = { method: "GET" | "POST"; body?: string; contentType?: string };
 export type HopRequester = (url: URL, init?: HopInit) => Promise<HopResponse>;
 
 // One request, no automatic redirects, body discarded, hard timeout, and a
 // DNS lookup that re-applies the address check at connect time.
-export const pinnedRequest: HopRequester = (url, init = { method: "GET" }) =>
+const pinnedRequest: HopRequester = (url, init = { method: "GET" }) =>
   new Promise<HopResponse>((resolve, reject) => {
     const client = url.protocol === "https:" ? https : http;
     const body = init.body ?? "";

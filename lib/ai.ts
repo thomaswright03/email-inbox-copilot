@@ -29,7 +29,7 @@ export function aiEnabled(): boolean {
   return Boolean(process.env.GEMINI_API_KEY?.trim()) && Boolean(process.env.GEMINI_PAID_TIER_PROJECT?.trim());
 }
 
-export class AiDisabledError extends Error {
+class AiDisabledError extends Error {
   constructor() {
     super("Gemini is disabled: GEMINI_PAID_TIER_PROJECT is not set");
   }
@@ -44,7 +44,7 @@ type GenerateConfig = {
 export type AiFeature = "summary" | "spam";
 // The model's text and why it stopped ("STOP", or "MAX_TOKENS" when it hit
 // maxOutputTokens mid-answer). A bare string is a reply that finished.
-export type ModelReply = { text: string | undefined; finishReason?: string };
+type ModelReply = { text: string | undefined; finishReason?: string };
 type Generate = (prompt: string, config: GenerateConfig, feature: AiFeature) => Promise<ModelReply | string | undefined>;
 
 function asReply(reply: ModelReply | string | undefined): ModelReply {
@@ -53,7 +53,7 @@ function asReply(reply: ModelReply | string | undefined): ModelReply {
 
 // One structured line per model call, for cost and quality tracking. It
 // never contains prompt or response text.
-export function logAiUsage(fields: {
+function logAiUsage(fields: {
   feature: AiFeature;
   outcome: "ok" | "empty" | "error" | "discarded" | "truncated";
   latencyMs?: number;
@@ -146,7 +146,7 @@ export function stripLinksAndImages(markdown: string): string {
     .replace(/[<>]/g, "");
 }
 
-export const SUMMARY_MAX_OUTPUT_TOKENS = 1024;
+const SUMMARY_MAX_OUTPUT_TOKENS = 1024;
 
 // `incomplete`: the model stopped at SUMMARY_MAX_OUTPUT_TOKENS, so the
 // summary may leave out the last items. The unfinished last line is

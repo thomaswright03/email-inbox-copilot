@@ -126,7 +126,7 @@ export async function enforceRateLimit(rule: RateLimitRule, subject: string, cos
 }
 
 // When the current fixed window of `rule` ends.
-export function windowResetsAt(rule: RateLimitRule, now = Date.now()): Date {
+function windowResetsAt(rule: RateLimitRule, now = Date.now()): Date {
   return new Date(now - (now % rule.windowMs) + rule.windowMs);
 }
 

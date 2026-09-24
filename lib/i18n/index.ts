@@ -4,5 +4,5 @@ import { es } from "./messages/es";
 import { fr } from "./messages/fr";
 
 export const MESSAGES: Record<Locale, Messages> = { en, es, fr };
-export { createTranslator, type PluralKey, type Translate } from "./translate";
+export { createTranslator, type Translate } from "./translate";
 export type { MessageKey } from "./messages/en";

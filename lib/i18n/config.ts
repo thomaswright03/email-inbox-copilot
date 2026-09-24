@@ -2,7 +2,7 @@
 // (content/legal.ts) are English only; the language menu says so.
 export const LOCALES = ["en", "es", "fr"] as const;
 export type Locale = (typeof LOCALES)[number];
-export const DEFAULT_LOCALE: Locale = "en";
+const DEFAULT_LOCALE: Locale = "en";
 export const LOCALE_COOKIE = "lang";
 
 export const LOCALE_NAMES: Record<Locale, string> = { en: "English", es: "Español", fr: "Français" };

@@ -115,12 +115,12 @@ export function isInInbox(labelIds: string[]): boolean {
 // messages are left out. Received mail they already archived still counts,
 // because it arrived that day (README "Which mail counts"). Gmail search
 // already skips Spam and Trash.
-export const RECENT_MAIL_QUERY = "newer_than:1d -in:sent -in:drafts -in:chats";
+const RECENT_MAIL_QUERY = "newer_than:1d -in:sent -in:drafts -in:chats";
 const NOT_RECEIVED_LABELS = ["SENT", "DRAFT", "CHAT"];
 
 // Belt and braces on top of the query: a message the list returns anyway
 // is dropped by its labels.
-export function isReceived(labelIds: string[]): boolean {
+function isReceived(labelIds: string[]): boolean {
   return !labelIds.some((label) => NOT_RECEIVED_LABELS.includes(label));
 }
 

@@ -1,9 +1,9 @@
 import type { Locale } from "./config";
 import type { MessageKey, Messages } from "./messages/en";
 
-export type Vars = Record<string, string | number>;
+type Vars = Record<string, string | number>;
 // "summary.count" for the pair "summary.count_one" / "summary.count_other".
-export type PluralKey = { [K in MessageKey]: K extends `${infer Base}_one` ? Base : never }[MessageKey];
+type PluralKey = { [K in MessageKey]: K extends `${infer Base}_one` ? Base : never }[MessageKey];
 export type Translate = (key: MessageKey | PluralKey, vars?: Vars) => string;
 
 // "{name}" placeholders are filled from vars; numbers are written the

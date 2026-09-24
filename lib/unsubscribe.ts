@@ -34,7 +34,7 @@ function httpUrl(candidate: string): string | null {
 
 const ADDRESS = /^[^\s@<>()",;:]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
-export function parseMailto(candidate: string): { to: string; subject: string; body: string } | null {
+function parseMailto(candidate: string): { to: string; subject: string; body: string } | null {
   if (!/^mailto:/i.test(candidate)) return null;
   const rest = candidate.slice("mailto:".length);
   const [rawTo, query = ""] = rest.split("?", 2);
@@ -53,7 +53,7 @@ export function parseMailto(candidate: string): { to: string; subject: string; b
   };
 }
 
-export function isOneClick(listUnsubscribePost: string | null): boolean {
+function isOneClick(listUnsubscribePost: string | null): boolean {
   return (listUnsubscribePost ?? "").replace(/\s+/g, "").toLowerCase() === "list-unsubscribe=one-click";
 }
 

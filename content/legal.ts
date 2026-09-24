@@ -4,9 +4,9 @@
 // to re-agree.
 
 export const LEGAL_VERSION = "2026-09-24.4";
-export const LEGAL_LAST_UPDATED = "September 24, 2026";
+const LEGAL_LAST_UPDATED = "September 24, 2026";
 export const CONTACT_EMAIL = "t@thomasewright.com";
-export const COMPANY_NAME = "Wright AI Solutions LLC";
+const COMPANY_NAME = "Wright AI Solutions LLC";
 
 // Every statement below about what the app stores, for how long, and who
 // receives it is checked against the code: see docs/architecture.md and

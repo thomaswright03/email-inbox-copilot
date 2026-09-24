@@ -37,7 +37,7 @@ export function SkeletonCards() {
 // After a few seconds of loading, says so, so a slow load doesn't look
 // frozen. Mounted only while loading; a load that never answers ends in an
 // error after FETCH_TIMEOUT_MS (lib/client-fetch.ts).
-export const SLOW_AFTER_MS = 5_000;
+const SLOW_AFTER_MS = 5_000;
 
 export function SlowNotice() {
   const { t } = useI18n();

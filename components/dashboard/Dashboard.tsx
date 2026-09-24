@@ -6,7 +6,7 @@ import { signOut, useSession } from "next-auth/react";
 import { ShieldCheck } from "lucide-react";
 import { fetchJson } from "@/lib/client-fetch";
 import { parseSender } from "@/lib/sender";
-import type { ActionName, SpamCardPayload } from "@/lib/payloads";
+import type { ActionName, ActionResult, SpamCardPayload } from "@/lib/payloads";
 import { useI18n } from "../I18nProvider";
 import DashboardHeader from "./DashboardHeader";
 import DataFooter from "./DataFooter";
@@ -20,7 +20,7 @@ import { errorMessageKey } from "./errors";
 import { formatResetTime } from "./format";
 import { useInbox } from "./useInbox";
 
-type ActionResponse = { ok: true; archived?: boolean; warning?: string };
+type ActionResponse = Extract<ActionResult, { ok: true }>;
 
 const REMOVE_ANIMATION_MS = 180;
 
