@@ -83,6 +83,7 @@ describe("GET /api/emails/spam", () => {
       userId: "gid-int-spam-1@example.com",
       action: "classified_spam",
       messageId: "m1",
+      detail: "flagged by AI",
     });
   });
 
@@ -170,6 +171,7 @@ describe("GET /api/emails/spam", () => {
     expect(classifyCandidates).not.toHaveBeenCalled();
     expect(body.aiStatus).toBe("off");
     expect(body.flashcards).toHaveLength(1);
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "classified_spam", detail: "flagged by rules" }));
     // A sale is labelled marketing even though it has an unsubscribe header.
     expect(body.flashcards[0]).toMatchObject({ id: "m1", reason: "marketing" });
   });

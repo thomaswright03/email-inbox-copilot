@@ -101,7 +101,7 @@ card, confirm dialog and toast components beside it).
 |---|---|
 | Auth + token refresh | `auth.ts`, `lib/google-auth.ts` |
 | Gmail access | `lib/gmail.ts` |
-| AI summarization/classification | `lib/ai.ts` |
+| AI summarization/classification | `lib/ai.ts`; model id and prompts in `lib/ai-prompts.ts` |
 | SSRF-safe outbound fetch | `lib/safe-fetch.ts` |
 | Unsubscribe header parsing | `lib/unsubscribe.ts` |
 | Audit logging | `lib/audit.ts` |

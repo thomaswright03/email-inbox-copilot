@@ -46,8 +46,8 @@ jobs:
         run: npm run test:coverage
 
       # Offline score of the rule-based spam flags against evals/golden
-      # (the Gemini eval, `npm run eval`, needs the paid-tier key and is run
-      # by hand; see evals/README.md).
+      # (the Gemini eval, `npm run eval`, needs the paid-tier key and runs in
+      # model-eval.yml when the model or a prompt changes; see evals/README.md).
       - name: Rule-based eval
         run: npm run eval:rules
 

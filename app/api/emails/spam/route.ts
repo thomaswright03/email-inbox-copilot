@@ -108,7 +108,10 @@ async function buildSpamPayload(accessToken: string, userId: string): Promise<Sp
   // Only logged when this actually ran (a true cache miss) — logging inside
   // getOrSetCached's fetcher, not after it returns, avoids writing duplicate
   // classification rows every time a cached response is served.
-  await Promise.all(flashcards.map((card) => logAuditEvent({ userId, action: "classified_spam", messageId: card.id })));
+  // The detail records who flagged the card, so the share of AI flags that
+  // users mark Not spam can be measured (scripts/ai-feedback.mjs).
+  const detail = ai.verdicts ? "flagged by AI" : "flagged by rules";
+  await Promise.all(flashcards.map((card) => logAuditEvent({ userId, action: "classified_spam", messageId: card.id, detail })));
 
   return {
     aiStatus: ai.aiStatus,

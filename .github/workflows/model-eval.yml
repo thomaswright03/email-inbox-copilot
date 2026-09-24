@@ -1,0 +1,68 @@
+name: Model eval
+
+# Scores the Gemini model and prompts against the golden sets (npm run eval)
+# whenever the model id, a prompt, the spam response schema, the golden sets
+# or the thresholds change, and weekly in case Google changes the model's
+# behaviour under the same id. The job fails when any score is below its
+# threshold in evals/scoring.ts, so a pull request that makes the model
+# worse can't pass.
+#
+# It needs two repository secrets (Settings -> Secrets and variables ->
+# Actions): GEMINI_API_KEY, a key from the billing-enabled (paid tier)
+# Google Cloud project, and GEMINI_PAID_TIER_PROJECT, that project's id.
+# Only invented golden-set mail is sent; see evals/README.md.
+
+on:
+  pull_request:
+    paths:
+      - "lib/ai-prompts.ts"
+      - "evals/**"
+      - ".github/workflows/model-eval.yml"
+  push:
+    branches: [main]
+    paths:
+      - "lib/ai-prompts.ts"
+      - "evals/**"
+      - ".github/workflows/model-eval.yml"
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  model-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Check the paid-tier Gemini secrets are set
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_PAID_TIER_PROJECT: ${{ secrets.GEMINI_PAID_TIER_PROJECT }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ] || [ -z "$GEMINI_PAID_TIER_PROJECT" ]; then
+            echo "::error::The model eval needs the GEMINI_API_KEY and GEMINI_PAID_TIER_PROJECT repository secrets (paid-tier project). See evals/README.md."
+            exit 1
+          fi
+
+      - name: Score the model against the golden sets
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_PAID_TIER_PROJECT: ${{ secrets.GEMINI_PAID_TIER_PROJECT }}
+        run: npm run eval

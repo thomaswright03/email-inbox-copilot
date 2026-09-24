@@ -50,11 +50,30 @@ model clears it comfortably.
 
 ## When to run it
 
-- Before merging any change to `MODEL`, `SUMMARY_SYSTEM_INSTRUCTION`, `SPAM_SYSTEM_INSTRUCTION`,
-  the prompt text, the heuristic pre-filter in `lib/ai.ts`, or `lib/rules.ts`.
+- Before merging any change to `lib/ai-prompts.ts` (the model id, both system instructions,
+  the prompt text and the spam response schema), the heuristic pre-filter in `lib/ai.ts`, or
+  `lib/rules.ts`.
+- CI runs it for you: [`.github/workflows/model-eval.yml`](../.github/workflows/model-eval.yml)
+  runs `npm run eval` on every pull request or push to `main` that touches
+  `lib/ai-prompts.ts` or `evals/`, and every Monday, and fails when a score is below its
+  threshold. It needs the repository secrets `GEMINI_API_KEY` and `GEMINI_PAID_TIER_PROJECT`
+  (paid tier); without them the job fails and says so.
 - When Google announces a replacement for the pinned model id: run it against the new id
   first and switch only if it passes.
 
 `npm run eval` makes about 45 small Gemini calls (under 20k tokens in total). Each call
 also writes one `ai_usage` log line (feature, model, token counts, latency, outcome; never
 email content), the same line production writes for every model call.
+
+## In production
+
+`npm run eval` checks the model before a change ships; two signals watch it afterwards:
+
+- **False flags:** every spam card is logged as `classified_spam` with the detail
+  `flagged by AI` or `flagged by rules`, and every Not spam as `ignore`.
+  `MIGRATION_DATABASE_URL=… node scripts/ai-feedback.mjs [days]` prints, per day, how many
+  cards the AI flagged and what share users marked Not spam (and didn't undo). A rate that
+  jumps after a model or prompt change means the model got worse; compare it with the
+  precision above.
+- **Failures and cost:** each model call logs one `ai_usage` line (outcome, tokens, latency),
+  so a rise in `empty`, `discarded` or `error` outcomes shows up in the log drain.
