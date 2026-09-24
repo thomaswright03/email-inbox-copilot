@@ -5,6 +5,7 @@ vi.mock("@/lib/gmail", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/gmail")>();
   return {
     GmailAuthError: actual.GmailAuthError,
+    GmailNotFoundError: actual.GmailNotFoundError,
     trashMessage: vi.fn(),
     untrashMessage: vi.fn(),
     archiveMessage: vi.fn(),
@@ -23,6 +24,7 @@ import {
   archiveMessage,
   getUnsubscribeHeaders,
   GmailAuthError,
+  GmailNotFoundError,
   trashMessage,
   unarchiveMessage,
   untrashMessage,
@@ -88,6 +90,39 @@ describe("POST /api/actions", () => {
 
     expect(res.status).toBe(403);
     expect(body.code).toBe("gmail_reconnect");
+  });
+
+  it("delete: a message already deleted in Gmail (404) says so with its own code, not 'try again'", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
+    vi.mocked(trashMessage).mockRejectedValue(new GmailNotFoundError());
+
+    const res = await POST(postRequest({ action: "delete", messageId: "m1" }));
+
+    expect(res.status).toBe(410);
+    expect(await res.json()).toMatchObject({ ok: false, code: "message_gone", error: "This email is no longer in your inbox." });
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("unsubscribe: a message that is gone before its headers are read is reported the same way", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
+    vi.mocked(getUnsubscribeHeaders).mockRejectedValue(new GmailNotFoundError());
+
+    const res = await POST(postRequest({ action: "unsubscribe", messageId: "m1" }));
+
+    expect(res.status).toBe(410);
+    expect((await res.json()).code).toBe("message_gone");
+    expect(oneClickUnsubscribe).not.toHaveBeenCalled();
+  });
+
+  it("unsubscribe: a message deleted between the unsubscribe and the archive counts as out of the inbox", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
+    vi.mocked(getUnsubscribeHeaders).mockResolvedValue(ONE_CLICK);
+    vi.mocked(oneClickUnsubscribe).mockResolvedValue({ status: 200, location: null });
+    vi.mocked(archiveMessage).mockRejectedValue(new GmailNotFoundError());
+
+    const res = await POST(postRequest({ action: "unsubscribe", messageId: "m1" }));
+
+    expect(await res.json()).toEqual({ ok: true, archived: true });
   });
 
   it("ignore: remembers the choice without calling any Gmail mutation", async () => {

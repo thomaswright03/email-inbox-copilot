@@ -48,6 +48,18 @@ export class GmailAuthError extends Error {
   }
 }
 
+// Gmail has no such message any more: it was deleted (or permanently
+// removed from Trash) after the dashboard loaded. Retrying can't help.
+export class GmailNotFoundError extends Error {
+  constructor() {
+    super("The message no longer exists in Gmail");
+  }
+}
+
+function isGmailNotFound(err: unknown): boolean {
+  return toSafeError(err).status === 404;
+}
+
 export function isGmailAuthError(err: unknown): boolean {
   const safe = toSafeError(err);
   if (safe.status === 401) return true;
@@ -65,12 +77,13 @@ type GmailCall<T> = (options: { signal: AbortSignal }) => Promise<T>;
 
 // Reads are retried on transient errors (timeouts included, within the
 // retry budget); an auth failure becomes a GmailAuthError so the caller can
-// offer "Reconnect Gmail".
+// offer "Reconnect Gmail", and a missing message a GmailNotFoundError.
 async function gmailRead<T>(fn: GmailCall<T>, deadline?: AbortSignal): Promise<T> {
   try {
     return await withRetry(() => withTimeout((signal) => fn({ signal }), GMAIL_CALL_TIMEOUT_MS, deadline));
   } catch (err) {
     if (isGmailAuthError(err)) throw new GmailAuthError();
+    if (isGmailNotFound(err)) throw new GmailNotFoundError();
     throw err;
   }
 }
@@ -82,6 +95,7 @@ async function gmailWrite<T>(fn: GmailCall<T>): Promise<T> {
     return await withTimeout((signal) => fn({ signal }), GMAIL_CALL_TIMEOUT_MS);
   } catch (err) {
     if (isGmailAuthError(err)) throw new GmailAuthError();
+    if (isGmailNotFound(err)) throw new GmailNotFoundError();
     throw err;
   }
 }

@@ -553,6 +553,20 @@ describe("Dashboard", () => {
       expect(screen.getAllByRole("article")).toHaveLength(1);
     });
 
+    it("a message already deleted in Gmail removes the card, says so, and reloads the list", async () => {
+      mockApi({
+        actions: () => json({ ok: false, code: "message_gone", error: "x" }, 410),
+        spam: (_, url) => json(spam(url?.includes("refresh=1") ? [] : [ONE_CLICK])),
+      });
+      renderDashboard();
+      const [card] = await openSpamTab();
+      fireEvent.click(within(card).getByRole("button", { name: /Unsubscribe/ }));
+      expect(await screen.findByText("This email is no longer in your inbox. It may have been deleted or moved in Gmail.")).toBeTruthy();
+      await waitFor(() => expect(screen.queryAllByRole("article")).toHaveLength(0));
+      expect(within(card).queryByRole("alert")).toBeNull();
+      expect(fetchMock.mock.calls.map(([u]) => String(u))).toContain("/api/emails/spam?refresh=1");
+    });
+
     it("a revoked Gmail grant during an action offers Reconnect Gmail on the card", async () => {
       mockApi({ actions: () => json({ ok: false, code: "gmail_reconnect", error: "x" }, 403) });
       renderDashboard();

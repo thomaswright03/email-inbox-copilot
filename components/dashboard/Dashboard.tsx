@@ -138,6 +138,14 @@ export default function Dashboard({
     setPending({ id: card.id, action });
     try {
       const result = await postAction(action, card.id);
+      if (!result.ok && result.code === "message_gone") {
+        // Deleted or moved in Gmail since the list loaded: no retry can
+        // help, so the card goes and the list is reloaded.
+        removeCard(card);
+        showToast({ tone: "warning", message: t("errors.message_gone") });
+        void inbox.refresh();
+        return;
+      }
       if (!result.ok) {
         setNotice(card.id, {
           kind: "error",

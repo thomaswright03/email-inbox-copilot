@@ -27,6 +27,7 @@ import {
   getUnsubscribeHeaders,
   GMAIL_CALL_TIMEOUT_MS,
   GmailAuthError,
+  GmailNotFoundError,
   isGmailAuthError,
   MAX_MESSAGES,
   parseMessage,
@@ -220,6 +221,14 @@ describe("single-message calls", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("a message Gmail no longer has (404) becomes a GmailNotFoundError, for reads and changes", async () => {
+    api.trash.mockRejectedValueOnce(httpError(404, "Requested entity was not found."));
+    await expect(trashMessage("tok", "gone")).rejects.toBeInstanceOf(GmailNotFoundError);
+    api.get.mockRejectedValue(httpError(404, "Requested entity was not found."));
+    await expect(getUnsubscribeHeaders("tok", "gone")).rejects.toBeInstanceOf(GmailNotFoundError);
+    expect(api.get).toHaveBeenCalledTimes(1);
   });
 
   it("changes are never retried, and an auth failure asks for reconnect", async () => {

@@ -4,6 +4,7 @@ import {
   archiveMessage,
   getUnsubscribeHeaders,
   GmailAuthError,
+  GmailNotFoundError,
   trashMessage,
   unarchiveMessage,
   untrashMessage,
@@ -32,13 +33,22 @@ function reconnect(): NextResponse {
   return jsonError("Inbox Buddy has lost access to your Gmail. Reconnect to continue.", 403, undefined, "gmail_reconnect");
 }
 
+// The message was deleted in Gmail after the list loaded: retrying can't
+// help, so the dashboard removes the card and reloads the list. The user's
+// cached inbox is dropped so that reload doesn't show the message again.
+async function messageGone(userId: string): Promise<NextResponse> {
+  await invalidateUserInbox(userId);
+  return jsonError("This email is no longer in your inbox.", 410, undefined, "message_gone");
+}
+
 // Runs one Gmail change; returns the error response to send, or null.
-async function gmailChange(context: string, fn: () => Promise<void>, failure: string): Promise<NextResponse | null> {
+async function gmailChange(userId: string, context: string, fn: () => Promise<void>, failure: string): Promise<NextResponse | null> {
   try {
     await fn();
     return null;
   } catch (err) {
     if (err instanceof GmailAuthError) return reconnect();
+    if (err instanceof GmailNotFoundError) return messageGone(userId);
     logError(context, err);
     return jsonError(failure, 502, undefined, "action_failed");
   }
@@ -99,7 +109,7 @@ export async function POST(req: Request) {
         : action === "undo_delete"
           ? () => untrashMessage(accessToken, messageId)
           : () => unarchiveMessage(accessToken, messageId);
-    const failed = await gmailChange(`actions.${action}`, change, "Couldn't change this email in Gmail right now. Try again in a moment.");
+    const failed = await gmailChange(userId, `actions.${action}`, change, "Couldn't change this email in Gmail right now. Try again in a moment.");
     if (failed) return failed;
     await logAuditEvent(
       action === "delete"
@@ -119,6 +129,7 @@ export async function POST(req: Request) {
     headers = await getUnsubscribeHeaders(accessToken, messageId);
   } catch (err) {
     if (err instanceof GmailAuthError) return reconnect();
+    if (err instanceof GmailNotFoundError) return messageGone(userId);
     logError("actions.unsubscribe.header", err);
     return jsonError("Couldn't look up unsubscribe info right now. Try again in a moment.", 502, undefined, "action_failed");
   }
@@ -151,7 +162,19 @@ export async function POST(req: Request) {
     );
   }
 
-  const archiveFailed = await gmailChange("actions.unsubscribe.archive", () => archiveMessage(accessToken, messageId), "");
+  // A message deleted in the meantime is out of the inbox anyway.
+  const archiveFailed = await gmailChange(
+    userId,
+    "actions.unsubscribe.archive",
+    async () => {
+      try {
+        await archiveMessage(accessToken, messageId);
+      } catch (err) {
+        if (!(err instanceof GmailNotFoundError)) throw err;
+      }
+    },
+    ""
+  );
   await logAuditEvent({
     userId,
     action: "unsubscribe",

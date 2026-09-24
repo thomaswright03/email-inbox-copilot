@@ -147,6 +147,8 @@ export const es: Messages = {
   "errors.slow": "Esto está tardando más de lo habitual…",
   "errors.gmail_reconnect": "Inbox Buddy perdió el acceso a tu Gmail. Vuelve a conectarlo para continuar.",
   "errors.gmail_unavailable": "No se pudo conectar con Gmail en este momento. Inténtalo de nuevo en un momento.",
+  "errors.message_gone":
+    "Este correo ya no está en tu bandeja de entrada. Puede que se haya eliminado o movido en Gmail.",
   "errors.rate_limited": "Lo estás haciendo con demasiada frecuencia. Inténtalo de nuevo en breve.",
   "errors.unauthenticated": "Tu sesión ha terminado. Vuelve a iniciar sesión para continuar.",
   "errors.consent_required": "Primero acepta los Términos y la Política de privacidad.",

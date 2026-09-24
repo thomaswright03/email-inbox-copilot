@@ -14,6 +14,7 @@ export type ErrorCode =
   | "gmail_reconnect"
   | "gmail_unavailable"
   | "action_failed"
+  | "message_gone"
   | "no_unsubscribe"
   | "unsubscribe_unsafe"
   | "unsubscribe_rejected"

@@ -8,6 +8,7 @@ const SPECIFIC: Record<string, MessageKey> = {
   timeout: "errors.timeout",
   gmail_reconnect: "errors.gmail_reconnect",
   gmail_unavailable: "errors.gmail_unavailable",
+  message_gone: "errors.message_gone",
   rate_limited: "errors.rate_limited",
   unauthenticated: "errors.unauthenticated",
   consent_required: "errors.consent_required",

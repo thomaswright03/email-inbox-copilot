@@ -140,6 +140,7 @@ export const en = {
   "errors.slow": "This is taking longer than usual…",
   "errors.gmail_reconnect": "Inbox Buddy has lost access to your Gmail. Reconnect to continue.",
   "errors.gmail_unavailable": "Couldn't reach Gmail right now. Try again in a moment.",
+  "errors.message_gone": "This email is no longer in your inbox. It may have been deleted or moved in Gmail.",
   "errors.rate_limited": "You're doing that too often. Try again shortly.",
   "errors.unauthenticated": "Your session has ended. Sign in again to continue.",
   "errors.consent_required": "Please accept the Terms and Privacy Policy first.",
