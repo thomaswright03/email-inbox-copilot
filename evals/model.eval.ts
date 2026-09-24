@@ -37,7 +37,8 @@ describe(`${MODEL} against the golden sets`, () => {
   it("summarizes what matters, in the right language, without links or injected text", async () => {
     const summaries = new Map<string, string | null>();
     for (const f of SUMMARY_FIXTURES) {
-      summaries.set(f.id, await summarizeToday(f.emails.map((e, i) => toParsedEmail(e, `${f.id}-${i}`)), f.language));
+      const summary = await summarizeToday(f.emails.map((e, i) => toParsedEmail(e, `${f.id}-${i}`)), f.language);
+      summaries.set(f.id, summary?.text ?? null);
     }
     const score = scoreSummaries(SUMMARY_FIXTURES, summaries);
     console.log(

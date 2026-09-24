@@ -77,3 +77,4 @@ email content), the same line production writes for every model call.
   precision above.
 - **Failures and cost:** each model call logs one `ai_usage` line (outcome, tokens, latency),
   so a rise in `empty`, `discarded` or `error` outcomes shows up in the log drain.
+  `truncated` is a summary that hit its output limit; the dashboard marks it as cut short.

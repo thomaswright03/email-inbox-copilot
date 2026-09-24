@@ -14,6 +14,9 @@ export type TodayPayload = {
   // When the daily AI budget resets (ISO time), with aiStatus "budget".
   aiResetsAt?: string;
   summary: string | null;
+  // The AI summary stopped at its length limit and may leave out the last
+  // items (lib/ai.ts summarizeToday); the dashboard says so.
+  summaryIncomplete?: boolean;
   groups: RuleGroups | null;
   generatedAt: string;
   count: number;

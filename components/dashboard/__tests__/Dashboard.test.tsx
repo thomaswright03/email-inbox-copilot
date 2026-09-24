@@ -201,6 +201,20 @@ describe("Dashboard", () => {
       expect(screen.getByText("All messages (2)")).toBeTruthy();
     });
 
+    it("marks a summary that was cut short, and only that one", async () => {
+      mockApi({ today: () => json(today({ aiStatus: "generated", summary: "- First point", summaryIncomplete: true, groups: null })) });
+      renderDashboard();
+      expect(await screen.findByText("First point")).toBeTruthy();
+      expect(screen.getByText(/This summary was cut short/)).toBeTruthy();
+    });
+
+    it("does not mark a complete summary", async () => {
+      mockApi({ today: () => json(today({ aiStatus: "generated", summary: "- First point", groups: null })) });
+      renderDashboard();
+      expect(await screen.findByText("First point")).toBeTruthy();
+      expect(screen.queryByText(/cut short/)).toBeNull();
+    });
+
     it("says when today's AI budget is used up and when AI summaries come back", async () => {
       const resetsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
       mockApi({ today: () => json(today({ aiStatus: "budget", aiResetsAt: resetsAt })) });

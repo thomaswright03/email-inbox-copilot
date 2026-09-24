@@ -61,7 +61,7 @@ describe("GET /api/emails/today", () => {
   it("returns the summary, count, and mapped emails on success", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-1@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(summarizeToday).mockResolvedValue("**Summary**");
+    vi.mocked(summarizeToday).mockResolvedValue({ text: "**Summary**", incomplete: false });
 
     const res = await GET(getRequest());
     const body = await res.json();
@@ -73,10 +73,20 @@ describe("GET /api/emails/today", () => {
     expect(summarizeToday).toHaveBeenCalledWith([EMAIL], "en");
   });
 
+  it("passes on that a summary stopped at the output limit", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-cut@example.com"));
+    vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
+    vi.mocked(summarizeToday).mockResolvedValue({ text: "- First", incomplete: true });
+
+    const body = await (await GET(getRequest())).json();
+
+    expect(body).toMatchObject({ summary: "- First", summaryIncomplete: true, aiStatus: "generated" });
+  });
+
   it("writes the summary in the requested language", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-lang@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(summarizeToday).mockResolvedValue("**Résumé**");
+    vi.mocked(summarizeToday).mockResolvedValue({ text: "**Résumé**", incomplete: false });
 
     await GET(getRequest("?lang=fr"));
 
@@ -86,7 +96,7 @@ describe("GET /api/emails/today", () => {
   it("reports when the inbox had more messages than it read", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-trunc@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL], true));
-    vi.mocked(summarizeToday).mockResolvedValue("**Summary**");
+    vi.mocked(summarizeToday).mockResolvedValue({ text: "**Summary**", incomplete: false });
 
     const body = await (await GET(getRequest())).json();
 
@@ -129,7 +139,7 @@ describe("GET /api/emails/today", () => {
   it("serves a second request from cache without calling Gmail/Gemini again", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-4@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(summarizeToday).mockResolvedValue("**Summary**");
+    vi.mocked(summarizeToday).mockResolvedValue({ text: "**Summary**", incomplete: false });
 
     await GET(getRequest());
     await GET(getRequest());
@@ -143,7 +153,7 @@ describe("GET /api/emails/today", () => {
     try {
       vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-refresh@example.com"));
       vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-      vi.mocked(summarizeToday).mockResolvedValue("**Summary**");
+      vi.mocked(summarizeToday).mockResolvedValue({ text: "**Summary**", incomplete: false });
 
       await GET(getRequest());
       await GET(getRequest("?refresh=1"));
@@ -184,7 +194,7 @@ describe("GET /api/emails/today", () => {
   it("with the default AI budget, 10 uncached loads for one user in a day all get an AI summary", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-10loads@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(summarizeToday).mockResolvedValue("**Summary**");
+    vi.mocked(summarizeToday).mockResolvedValue({ text: "**Summary**", incomplete: false });
     for (let load = 0; load < 10; load++) {
       const body = await (await GET(getRequest("?refresh=1"))).json();
       expect(body).toMatchObject({ aiStatus: "generated", summary: "**Summary**" });

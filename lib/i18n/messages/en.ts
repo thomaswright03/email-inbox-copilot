@@ -78,6 +78,8 @@ export const en = {
   "summary.group.toCheck": "Messages to check ({count})",
   "summary.group.bulk": "Likely promotional or bulk ({count})",
   "summary.allMessages": "All messages ({count})",
+  "summary.incomplete":
+    "This summary was cut short, so it may leave out the last few emails. Every message is listed under “All messages” below.",
   "summary.openInGmail": "Open in Gmail",
   "summary.openInGmailAria": "Open “{subject}” in Gmail",
 

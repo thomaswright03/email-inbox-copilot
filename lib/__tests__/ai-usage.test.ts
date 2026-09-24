@@ -48,7 +48,7 @@ describe("Gemini calls", () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
     generateContent.mockResolvedValue({ text: "- One thing matters", usageMetadata: { promptTokenCount: 120, candidatesTokenCount: 9 } });
 
-    expect(await summarizeToday([EMAIL], "fr")).toBe("- One thing matters");
+    expect(await summarizeToday([EMAIL], "fr")).toEqual({ text: "- One thing matters", incomplete: false });
     expect(constructed).toHaveBeenCalledTimes(1);
     expect(generateContent.mock.calls[0][0]).toMatchObject({ model: MODEL });
     expect(generateContent.mock.calls[0][0].contents).toContain("Write the summary in French");
@@ -57,6 +57,23 @@ describe("Gemini calls", () => {
     expect(line).toMatchObject({ feature: "summary", model: MODEL, outcome: "ok", inputTokens: 120, outputTokens: 9 });
     expect(typeof line.latencyMs).toBe("number");
     expect(JSON.stringify(info.mock.calls)).not.toMatch(/SECRET/);
+    info.mockRestore();
+  });
+
+  it("a summary that stopped at the output limit is flagged incomplete, without its unfinished last line", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    generateContent.mockResolvedValueOnce({
+      text: "- Ana needs the contract by Friday\n- Your invoice is due\n- The team off",
+      candidates: [{ finishReason: "MAX_TOKENS" }],
+    });
+    expect(await summarizeToday([EMAIL])).toEqual({
+      text: "- Ana needs the contract by Friday\n- Your invoice is due",
+      incomplete: true,
+    });
+    expect(usageLines(info).at(-1)).toMatchObject({ feature: "summary", outcome: "truncated" });
+
+    generateContent.mockResolvedValueOnce({ text: "- All done", candidates: [{ finishReason: "STOP" }] });
+    expect(await summarizeToday([EMAIL])).toEqual({ text: "- All done", incomplete: false });
     info.mockRestore();
   });
 

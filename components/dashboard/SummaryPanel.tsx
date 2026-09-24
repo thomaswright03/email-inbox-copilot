@@ -2,7 +2,7 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ChevronRight, ExternalLink, Inbox, RefreshCw } from "lucide-react";
+import { AlertTriangle, ChevronRight, ExternalLink, Inbox, RefreshCw } from "lucide-react";
 import { gmailThreadUrl } from "@/lib/gmail-links";
 import { parseSender } from "@/lib/sender";
 import type { TodayPayload } from "@/lib/payloads";
@@ -118,6 +118,12 @@ export default function SummaryPanel({
             <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml disallowedElements={["a", "img"]} unwrapDisallowed>
               {data.summary}
             </ReactMarkdown>
+            {data.summaryIncomplete && (
+              <p className="not-prose mt-3 flex items-start gap-1.5 rounded-lg bg-warning-soft px-2.5 py-1.5 text-sm text-warning">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                {t("summary.incomplete")}
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-4">

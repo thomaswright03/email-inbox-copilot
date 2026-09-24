@@ -19,6 +19,7 @@ async function buildTodayPayload(accessToken: string, userId: string, language: 
   const { emails } = inbox;
 
   let summary: string | null = null;
+  let summaryIncomplete = false;
   let aiStatus: AiStatus = aiEnabled() ? "generated" : "off";
   let aiResetsAt: string | undefined;
   if (aiStatus === "generated" && emails.length > 0) {
@@ -30,7 +31,9 @@ async function buildTodayPayload(accessToken: string, userId: string, language: 
       if (aiStatus === "budget") aiResetsAt = grant.resetsAt;
     } else {
       try {
-        summary = await summarizeToday(emails, language);
+        const result = await summarizeToday(emails, language);
+        summary = result?.text ?? null;
+        summaryIncomplete = result?.incomplete ?? false;
         if (!summary) aiStatus = "unavailable";
       } catch (err) {
         // Any AI failure degrades to the rule-based view instead of failing the page.
@@ -45,6 +48,7 @@ async function buildTodayPayload(accessToken: string, userId: string, language: 
     aiStatus,
     ...(aiResetsAt ? { aiResetsAt } : {}),
     summary,
+    ...(summaryIncomplete ? { summaryIncomplete } : {}),
     groups: summary ? null : ruleBasedGroups(emails),
     generatedAt: new Date().toISOString(),
     count: emails.length,

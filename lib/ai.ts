@@ -42,13 +42,20 @@ type GenerateConfig = {
   responseJsonSchema?: unknown;
 };
 export type AiFeature = "summary" | "spam";
-type Generate = (prompt: string, config: GenerateConfig, feature: AiFeature) => Promise<string | undefined>;
+// The model's text and why it stopped ("STOP", or "MAX_TOKENS" when it hit
+// maxOutputTokens mid-answer). A bare string is a reply that finished.
+export type ModelReply = { text: string | undefined; finishReason?: string };
+type Generate = (prompt: string, config: GenerateConfig, feature: AiFeature) => Promise<ModelReply | string | undefined>;
+
+function asReply(reply: ModelReply | string | undefined): ModelReply {
+  return typeof reply === "object" ? reply : { text: reply };
+}
 
 // One structured line per model call, for cost and quality tracking. It
 // never contains prompt or response text.
 export function logAiUsage(fields: {
   feature: AiFeature;
-  outcome: "ok" | "empty" | "error" | "discarded";
+  outcome: "ok" | "empty" | "error" | "discarded" | "truncated";
   latencyMs?: number;
   inputTokens?: number;
   outputTokens?: number;
@@ -76,14 +83,15 @@ const geminiGenerate: Generate = async (prompt, config, feature) => {
       { budgetMs: timeoutMs }
     );
     const text = response.text;
+    const finishReason = response.candidates?.[0]?.finishReason;
     logAiUsage({
       feature,
-      outcome: text ? "ok" : "empty",
+      outcome: text ? (finishReason === "MAX_TOKENS" ? "truncated" : "ok") : "empty",
       latencyMs: Date.now() - started,
       inputTokens: response.usageMetadata?.promptTokenCount,
       outputTokens: response.usageMetadata?.candidatesTokenCount,
     });
-    return text;
+    return { text, finishReason };
   } catch (err) {
     logAiUsage({ feature, outcome: "error", latencyMs: Date.now() - started, error: toSafeError(err).name });
     throw err;
@@ -138,20 +146,39 @@ export function stripLinksAndImages(markdown: string): string {
     .replace(/[<>]/g, "");
 }
 
+export const SUMMARY_MAX_OUTPUT_TOKENS = 1024;
+
+// `incomplete`: the model stopped at SUMMARY_MAX_OUTPUT_TOKENS, so the
+// summary may leave out the last items. The unfinished last line is
+// dropped, and the dashboard says the summary was cut short (every message
+// is still listed under it).
+export type Summary = { text: string; incomplete: boolean };
+
+// Keeps the summary up to its last complete line (a half-written bullet
+// would read as if it were the whole point).
+function dropUnfinishedLine(text: string): string {
+  const lastBreak = text.trimEnd().lastIndexOf("\n");
+  return lastBreak > 0 ? text.slice(0, lastBreak) : text;
+}
+
 // Returns null when the model produced nothing usable; the caller then
 // falls back to the rule-based view.
-export async function summarizeToday(emails: ParsedEmail[], language: SummaryLanguage = "en"): Promise<string | null> {
+export async function summarizeToday(emails: ParsedEmail[], language: SummaryLanguage = "en"): Promise<Summary | null> {
   if (emails.length === 0) return null;
 
   const digest = emails.map((e, i) => emailBlock(`e${i + 1}`, e)).join("\n\n");
 
-  const text = await generate(
-    summaryPrompt(SUMMARY_LANGUAGES[language], digest),
-    { systemInstruction: SUMMARY_SYSTEM_INSTRUCTION, maxOutputTokens: 1024 },
-    "summary"
+  const reply = asReply(
+    await generate(
+      summaryPrompt(SUMMARY_LANGUAGES[language], digest),
+      { systemInstruction: SUMMARY_SYSTEM_INSTRUCTION, maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS },
+      "summary"
+    )
   );
+  const incomplete = reply.finishReason === "MAX_TOKENS";
+  const text = reply.text && incomplete ? dropUnfinishedLine(reply.text) : reply.text;
   const cleaned = text ? stripLinksAndImages(text).trim() : "";
-  return cleaned || null;
+  return cleaned ? { text: cleaned, incomplete } : null;
 }
 
 export type SpamVerdict = { id: string; isSpam: boolean; reason: SpamReason };
@@ -221,12 +248,20 @@ const CLASSIFY_CONCURRENCY = 5;
 type Classified = { email: ParsedEmail; verdict: SpamVerdict | null };
 
 async function classifyOne(email: ParsedEmail): Promise<Classified> {
-  const text = await generate(spamPrompt(emailBlock("e1", email)), {
-    systemInstruction: SPAM_SYSTEM_INSTRUCTION,
-    responseMimeType: "application/json",
-    responseJsonSchema: SPAM_RESPONSE_SCHEMA,
-    maxOutputTokens: 128,
-  }, "spam");
+  // A verdict cut off at the token limit isn't valid JSON, so it is
+  // discarded below like any other malformed answer.
+  const { text } = asReply(
+    await generate(
+      spamPrompt(emailBlock("e1", email)),
+      {
+        systemInstruction: SPAM_SYSTEM_INSTRUCTION,
+        responseMimeType: "application/json",
+        responseJsonSchema: SPAM_RESPONSE_SCHEMA,
+        maxOutputTokens: 128,
+      },
+      "spam"
+    )
+  );
   if (!text) return { email, verdict: null };
   let raw: unknown;
   try {

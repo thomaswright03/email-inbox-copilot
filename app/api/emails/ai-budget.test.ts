@@ -54,7 +54,7 @@ describe("when today's AI budget runs out", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
     signIn();
-    vi.mocked(summarizeToday).mockResolvedValue("**Summary**");
+    vi.mocked(summarizeToday).mockResolvedValue({ text: "**Summary**", incomplete: false });
     vi.mocked(classifyCandidates).mockImplementation(async (candidates) => ({
       verdicts: candidates.map((e) => ({ id: e.id, isSpam: true, reason: "marketing" as const })),
       checkedIds: candidates.map((e) => e.id),
