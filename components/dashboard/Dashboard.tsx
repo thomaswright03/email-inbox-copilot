@@ -15,7 +15,7 @@ import SummaryPanel from "./SummaryPanel";
 import SpamCard, { type CardNotice } from "./SpamCard";
 import ConfirmDialog from "./ConfirmDialog";
 import Toast, { type ToastState } from "./Toast";
-import { ErrorState, SkeletonCards, SlowNotice } from "./States";
+import { ErrorState, recoveryFor, SkeletonCards, SlowNotice } from "./States";
 import { errorMessageKey } from "./errors";
 import { formatResetTime } from "./format";
 import { useInbox } from "./useInbox";
@@ -131,7 +131,7 @@ export default function Dashboard({
         setNotice(card.id, {
           kind: "error",
           message: t(errorMessageKey(result.code, "errors.action")),
-          reconnect: result.code === "gmail_reconnect",
+          recovery: recoveryFor(result.code),
         });
         return;
       }
@@ -187,7 +187,7 @@ export default function Dashboard({
           ) : inbox.spam.status === "error" ? (
             <ErrorState
               message={t(errorMessageKey(inbox.spam.code, "errors.spamLoad"))}
-              reconnect={inbox.spam.code === "gmail_reconnect"}
+              code={inbox.spam.code}
               onRetry={inbox.retrySpam}
             />
           ) : inbox.spam.status === "loading" ? (

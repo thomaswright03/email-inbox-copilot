@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, LogIn, RefreshCw } from "lucide-react";
 import { signIn } from "next-auth/react";
 import { useI18n } from "../I18nProvider";
 
@@ -53,13 +53,29 @@ export function SlowNotice() {
   );
 }
 
-// Signs in again with Google to restore Gmail access.
+// Signs in again with Google, which restores Gmail access or a session
+// that ended, and comes back to this page.
 export function reconnectGmail() {
   void signIn("google");
 }
 
-export function ErrorState({ message, reconnect, onRetry }: { message: string; reconnect: boolean; onRetry: () => void }) {
+// What an error can offer: Gmail access lost -> reconnect Gmail; the
+// session ended -> sign in again (repeating the request would only fail
+// again); anything else -> try again.
+export type Recovery = "reconnect" | "signin" | "retry";
+
+export function recoveryFor(code: string): Recovery {
+  if (code === "gmail_reconnect") return "reconnect";
+  if (code === "unauthenticated") return "signin";
+  return "retry";
+}
+
+export const RECOVERY_LABEL = { reconnect: "errors.reconnect", signin: "errors.signInAgain", retry: "errors.retry" } as const;
+
+export function ErrorState({ message, code, onRetry }: { message: string; code: string; onRetry: () => void }) {
   const { t } = useI18n();
+  const recovery = recoveryFor(code);
+  const Icon = recovery === "retry" ? RefreshCw : LogIn;
   return (
     <div
       role="alert"
@@ -68,11 +84,11 @@ export function ErrorState({ message, reconnect, onRetry }: { message: string; r
       <AlertTriangle className="h-6 w-6 text-danger" strokeWidth={1.5} aria-hidden />
       <p className="max-w-xs text-sm text-danger">{message}</p>
       <button
-        onClick={reconnect ? reconnectGmail : onRetry}
+        onClick={recovery === "retry" ? onRetry : reconnectGmail}
         className="tap-h mt-1 inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-hover"
       >
-        <RefreshCw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-        {reconnect ? t("errors.reconnect") : t("errors.retry")}
+        <Icon className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+        {t(RECOVERY_LABEL[recovery])}
       </button>
     </div>
   );

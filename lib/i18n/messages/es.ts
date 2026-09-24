@@ -156,6 +156,7 @@ export const es: Messages = {
     "No se pudo contactar con el remitente para darte de baja. Sigues suscrito. Inténtalo más tarde.",
   "errors.retry": "Intentar de nuevo",
   "errors.reconnect": "Volver a conectar Gmail",
+  "errors.signInAgain": "Volver a iniciar sesión",
 
   "footer.yourData": "Tus datos",
   "footer.accountId": "ID de cuenta",

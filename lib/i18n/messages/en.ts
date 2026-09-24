@@ -147,6 +147,7 @@ export const en = {
   "errors.unsubscribe_failed": "Couldn't reach the sender to unsubscribe. You are still subscribed. Try again later.",
   "errors.retry": "Try again",
   "errors.reconnect": "Reconnect Gmail",
+  "errors.signInAgain": "Sign in again",
 
   "footer.yourData": "Your data",
   "footer.accountId": "Account id",

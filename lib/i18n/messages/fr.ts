@@ -156,6 +156,7 @@ export const fr: Messages = {
     "Impossible de joindre l'expéditeur pour vous désabonner. Vous êtes toujours abonné. Réessayez plus tard.",
   "errors.retry": "Réessayer",
   "errors.reconnect": "Reconnecter Gmail",
+  "errors.signInAgain": "Se reconnecter",
 
   "footer.yourData": "Vos données",
   "footer.accountId": "Identifiant du compte",

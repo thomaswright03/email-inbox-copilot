@@ -5,9 +5,9 @@ import { gmailThreadUrl } from "@/lib/gmail-links";
 import { initials, parseSender } from "@/lib/sender";
 import type { SpamCardPayload } from "@/lib/payloads";
 import { useI18n } from "../I18nProvider";
-import { reconnectGmail } from "./States";
+import { reconnectGmail, RECOVERY_LABEL, type Recovery } from "./States";
 
-export type CardNotice = { kind: "error"; message: string; reconnect: boolean } | { kind: "finish"; message: string };
+export type CardNotice = { kind: "error"; message: string; recovery: Recovery } | { kind: "finish"; message: string };
 
 const BUTTON =
   "tap-h flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60";
@@ -133,9 +133,9 @@ export default function SpamCard({
         <div role="alert" className="mt-2.5 flex items-start gap-2 rounded-lg bg-danger-soft px-2.5 py-2 text-xs text-danger">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
           <span className="flex-1">{notice.message}</span>
-          {notice.reconnect && (
+          {notice.recovery !== "retry" && (
             <button onClick={reconnectGmail} className="shrink-0 font-medium underline underline-offset-2">
-              {t("errors.reconnect")}
+              {t(RECOVERY_LABEL[notice.recovery])}
             </button>
           )}
         </div>

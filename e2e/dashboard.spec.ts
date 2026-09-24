@@ -123,6 +123,27 @@ test.describe("dashboard", () => {
     await expect(page.getByRole("article")).toHaveCount(2);
   });
 
+  test("an ended session offers Sign in again, which starts Google sign-in instead of repeating the request", async ({ page, context }) => {
+    await signInAs(context);
+    for (const api of ["**/api/emails/today**", "**/api/emails/spam**"]) {
+      await page.route(api, (route) => route.fulfill({ status: 401, json: { ok: false, code: "unauthenticated", error: "Not authenticated" } }));
+    }
+    await page.route("https://accounts.google.com/**", (route) => route.fulfill({ contentType: "text/html", body: "<title>Google</title>" }));
+    await page.goto("/");
+    const alert = page.getByRole("alert").filter({ hasText: "Your session has ended. Sign in again to continue." });
+    await expect(alert).toBeVisible();
+    await expect(alert.getByRole("button", { name: "Try again" })).toHaveCount(0);
+
+    let apiCallsAfterClick = 0;
+    page.on("request", (req) => {
+      if (req.url().includes("/api/emails/")) apiCallsAfterClick++;
+    });
+    const toGoogle = page.waitForRequest((req) => req.url().startsWith("https://accounts.google.com/"));
+    await alert.getByRole("button", { name: "Sign in again" }).click();
+    expect((await toGoogle).url()).toContain("accounts.google.com");
+    expect(apiCallsAfterClick).toBe(0);
+  });
+
   test("a load that never answers says it is slow, then offers Try again instead of spinning forever", async ({ page, context }) => {
     test.setTimeout(60_000);
     await signInAs(context);

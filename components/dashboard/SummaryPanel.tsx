@@ -64,7 +64,7 @@ export default function SummaryPanel({
     return (
       <ErrorState
         message={t(errorMessageKey(state.code, "errors.summaryLoad"))}
-        reconnect={state.code === "gmail_reconnect"}
+        code={state.code}
         onRetry={onRetry}
       />
     );

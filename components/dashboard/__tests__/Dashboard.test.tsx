@@ -268,6 +268,32 @@ describe("Dashboard", () => {
       expect(signIn).toHaveBeenCalledWith("google");
     });
 
+    it("offers Sign in again, not a Try again that can't work, when the session has ended", async () => {
+      mockApi({ today: () => json({ ok: false, code: "unauthenticated", error: "x" }, 401) });
+      renderDashboard();
+      expect(await screen.findByText("Your session has ended. Sign in again to continue.")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+      const todayCalls = () => fetchMock.mock.calls.filter(([u]) => String(u).startsWith("/api/emails/today")).length;
+      const before = todayCalls();
+      fireEvent.click(screen.getByRole("button", { name: "Sign in again" }));
+      expect(signIn).toHaveBeenCalledWith("google");
+      expect(todayCalls()).toBe(before);
+    });
+
+    it("offers Sign in again in Spanish and French too", async () => {
+      mockApi({ today: () => json({ ok: false, code: "unauthenticated", error: "x" }, 401) });
+      const { unmount } = renderWithProviders(
+        <Dashboard userName="T" userEmail="t@example.com" accountId="gid-1" dataRequestCode={null} aiOn />,
+        { locale: "es" }
+      );
+      expect(await screen.findByRole("button", { name: "Volver a iniciar sesión" })).toBeTruthy();
+      unmount();
+      renderWithProviders(<Dashboard userName="T" userEmail="t@example.com" accountId="gid-1" dataRequestCode={null} aiOn />, {
+        locale: "fr",
+      });
+      expect(await screen.findByRole("button", { name: "Se reconnecter" })).toBeTruthy();
+    });
+
     it("keeps the retry message for a Gmail outage", async () => {
       mockApi({ today: () => json({ ok: false, code: "gmail_unavailable", error: "x" }, 502) });
       renderDashboard();
@@ -500,6 +526,16 @@ describe("Dashboard", () => {
       const [card] = await openSpamTab();
       fireEvent.click(within(card).getByRole("button", { name: /Not spam/ }));
       fireEvent.click(await within(card).findByRole("button", { name: "Reconnect Gmail" }));
+      expect(signIn).toHaveBeenCalledWith("google");
+    });
+
+    it("an ended session during an action offers Sign in again on the card", async () => {
+      mockApi({ actions: () => json({ ok: false, code: "unauthenticated", error: "x" }, 401) });
+      renderDashboard();
+      const [card] = await openSpamTab();
+      fireEvent.click(within(card).getByRole("button", { name: /Not spam/ }));
+      expect((await within(card).findByRole("alert")).textContent).toContain("Your session has ended.");
+      fireEvent.click(within(card).getByRole("button", { name: "Sign in again" }));
       expect(signIn).toHaveBeenCalledWith("google");
     });
 
