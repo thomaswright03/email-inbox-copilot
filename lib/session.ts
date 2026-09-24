@@ -3,7 +3,8 @@ import { getToken } from "next-auth/jwt";
 import { refreshGoogleAccessToken } from "./google-auth";
 import { SESSION_COOKIE_NAME, USE_SECURE_COOKIES } from "./session-cookie";
 import { LEGAL_VERSION } from "@/content/legal";
-import { logError } from "./log";
+import { logError, logSecurityEvent } from "./log";
+import { checkSessionVersion } from "./session-store";
 
 // Server-only view of the signed-in user. The Google access and refresh
 // tokens live only inside the encrypted, HttpOnly session cookie and are
@@ -40,6 +41,14 @@ export async function getGoogleSession(headers?: Headers): Promise<GoogleSession
   const userId = typeof token.googleId === "string" ? token.googleId : null;
   const userEmail = typeof token.email === "string" ? token.email : null;
   if (!userId || !userEmail) return null;
+
+  // A cookie issued before the user's last sign-out or an operator
+  // revocation carries an older version and is refused.
+  const check = await checkSessionVersion(userId, token.sessionVersion);
+  if (check !== "valid") {
+    logSecurityEvent("session_rejected", { reason: check });
+    return null;
+  }
 
   let accessToken = typeof token.accessToken === "string" ? token.accessToken : null;
   const expiresAt = typeof token.expiresAt === "number" ? token.expiresAt : 0;

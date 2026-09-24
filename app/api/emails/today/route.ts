@@ -5,7 +5,7 @@ import { getOrSetCached, userCacheKey } from "@/lib/response-cache";
 import { RouteError } from "@/lib/route-error";
 import { jsonError, rateLimitedResponse, requireSession } from "@/lib/api";
 import { enforceAiBudget, enforceRateLimit, RATE_LIMITS, RateLimitError } from "@/lib/rate-limit";
-import { logError } from "@/lib/log";
+import { isQuotaError, logError, logSecurityEvent } from "@/lib/log";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -25,6 +25,7 @@ async function buildTodayPayload(accessToken: string, userId: string) {
   } catch (err) {
     if (err instanceof RateLimitError) throw err;
     logError("today.gemini", err);
+    if (isQuotaError(err)) logSecurityEvent("ai_quota_exhausted", { route: "today" });
     throw new RouteError("Couldn't generate your summary right now. Try again in a moment.", 502);
   }
 

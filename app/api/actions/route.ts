@@ -41,6 +41,9 @@ export async function POST(req: Request) {
     throw err;
   }
 
+  if (!(req.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) {
+    return jsonError("Content-Type must be application/json", 415);
+  }
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return jsonError("Request too large", 413);
   const raw = await req.text();
   if (Buffer.byteLength(raw) > MAX_BODY_BYTES) return jsonError("Request too large", 413);

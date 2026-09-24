@@ -36,3 +36,15 @@ export async function refreshGoogleAccessToken(refreshToken: string): Promise<Re
     refreshToken: data.refresh_token ?? refreshToken,
   };
 }
+
+// Revokes a Google OAuth token (revoking the refresh token also invalidates
+// the access tokens minted from it), so a copied session cookie stops
+// working against Gmail the moment the user signs out.
+export async function revokeGoogleToken(token: string): Promise<boolean> {
+  const response = await fetch("https://oauth2.googleapis.com/revoke", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ token }),
+  });
+  return response.ok;
+}

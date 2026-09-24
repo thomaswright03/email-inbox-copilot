@@ -6,7 +6,7 @@ import { getOrSetCached, userCacheKey } from "@/lib/response-cache";
 import { RouteError } from "@/lib/route-error";
 import { jsonError, rateLimitedResponse, requireSession } from "@/lib/api";
 import { enforceAiBudget, enforceRateLimit, RATE_LIMITS, RateLimitError } from "@/lib/rate-limit";
-import { logError } from "@/lib/log";
+import { isQuotaError, logError, logSecurityEvent } from "@/lib/log";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -21,11 +21,12 @@ async function buildSpamPayload(accessToken: string, userId: string, userEmail: 
 
   let verdicts;
   try {
-    if (spamCandidates(emails).length > 0) await enforceAiBudget(userId);
+    await enforceAiBudget(userId, spamCandidates(emails).length);
     verdicts = await classifySpam(emails);
   } catch (err) {
     if (err instanceof RateLimitError) throw err;
     logError("spam.gemini", err);
+    if (isQuotaError(err)) logSecurityEvent("ai_quota_exhausted", { route: "spam" });
     throw new RouteError("Couldn't check for spam right now. Try again in a moment.", 502);
   }
 
@@ -39,7 +40,7 @@ async function buildSpamPayload(accessToken: string, userId: string, userEmail: 
       subject: e.subject,
       snippet: e.snippet,
       hasUnsubscribe: Boolean(e.listUnsubscribe),
-      reason: verdicts.find((v) => v.id === e.id)?.reason ?? "",
+      reason: verdicts.find((v) => v.id === e.id)?.reason ?? "marketing",
     }));
 
   // Only logged when this actually ran (a true cache miss) — logging inside
@@ -47,7 +48,7 @@ async function buildSpamPayload(accessToken: string, userId: string, userEmail: 
   // classification rows every time a cached response is served.
   await Promise.all(
     flashcards.map((card) =>
-      logAuditEvent({ userEmail, action: "classified_spam", messageId: card.id, detail: card.reason })
+      logAuditEvent({ userEmail, action: "classified_spam", messageId: card.id })
     )
   );
 

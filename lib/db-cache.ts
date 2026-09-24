@@ -1,5 +1,4 @@
 import { getSql } from "./db";
-import type { Sql } from "./db";
 import { seal, unseal } from "./crypto";
 import { logError } from "./log";
 
@@ -17,29 +16,11 @@ import { logError } from "./log";
 // rather than left behind.
 const PURPOSE = "response-cache";
 
-let schemaReady: Promise<void> | null = null;
-
-async function ensureSchema(sql: Sql): Promise<void> {
-  if (!schemaReady) {
-    schemaReady = sql`
-      CREATE TABLE IF NOT EXISTS response_cache (
-        key TEXT PRIMARY KEY,
-        value JSONB NOT NULL,
-        expires_at TIMESTAMPTZ NOT NULL
-      )
-    `.then(() => undefined);
-    schemaReady.catch(() => {
-      schemaReady = null;
-    });
-  }
-  await schemaReady;
-}
 
 export async function getCachedDb<T>(key: string): Promise<T | undefined> {
   try {
     const sql = getSql();
     if (!sql) return undefined;
-    await ensureSchema(sql);
     const rows = await sql`
       SELECT value FROM response_cache WHERE key = ${key} AND expires_at > now()
     `;
@@ -58,7 +39,6 @@ export async function setCachedDb<T>(key: string, value: T, ttlMs: number): Prom
     const sealed = seal(value, PURPOSE, key);
     // Without an encryption key, inbox data is not written to the database.
     if (!sealed) return;
-    await ensureSchema(sql);
     const expiresAt = new Date(Date.now() + ttlMs).toISOString();
     await sql`
       INSERT INTO response_cache (key, value, expires_at)
@@ -75,7 +55,6 @@ export async function invalidateCachedDb(key: string): Promise<void> {
   try {
     const sql = getSql();
     if (!sql) return;
-    await ensureSchema(sql);
     await sql`DELETE FROM response_cache WHERE key = ${key}`;
   } catch (err) {
     logError("db-cache.invalidate", err);
@@ -86,7 +65,6 @@ export async function invalidateCachedDbByPrefix(prefix: string): Promise<void> 
   try {
     const sql = getSql();
     if (!sql) return;
-    await ensureSchema(sql);
     await sql`DELETE FROM response_cache WHERE starts_with(key, ${prefix})`;
   } catch (err) {
     logError("db-cache.invalidate-prefix", err);

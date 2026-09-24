@@ -1,4 +1,29 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
+import { SESSION_COOKIE_NAME, USE_SECURE_COOKIES } from "@/lib/session-cookie";
+
+// API routes are authenticated by default: any /api/* request other than
+// Auth.js's own /api/auth/* endpoints is refused here unless it carries a
+// valid (decryptable, unexpired) session cookie. Each route still performs
+// the full check (session version, consent) through lib/api.ts, so a new
+// route that forgets to is still not public.
+async function requireApiSession(request: NextRequest): Promise<NextResponse | null> {
+  const secret = process.env.AUTH_SECRET;
+  const token = secret
+    ? await getToken({
+        req: request,
+        secret,
+        secureCookie: USE_SECURE_COOKIES,
+        cookieName: SESSION_COOKIE_NAME,
+        salt: SESSION_COOKIE_NAME,
+      })
+    : null;
+  if (token && !token.error && typeof token.googleId === "string") return null;
+  return NextResponse.json(
+    { ok: false, error: "Not authenticated" },
+    { status: 401, headers: { "Cache-Control": "no-store" } }
+  );
+}
 
 // Per-request nonce-based Content Security Policy for every page. Next.js
 // reads the nonce from the request's CSP header and stamps it onto its own
@@ -21,7 +46,13 @@ export function buildCsp(nonce: string, isDev: boolean): string {
   ].join("; ");
 }
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  if (pathname.startsWith("/api/")) {
+    if (pathname.startsWith("/api/auth/")) return NextResponse.next();
+    return (await requireApiSession(request)) ?? NextResponse.next();
+  }
+
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const csp = buildCsp(nonce, process.env.NODE_ENV === "development");
 
@@ -36,6 +67,7 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/api/:path*",
     {
       source: "/((?!api|_next/static|_next/image|favicon.ico).*)",
       missing: [

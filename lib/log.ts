@@ -1,3 +1,5 @@
+import { raiseAlert } from "./alert";
+
 // Server-side logging helpers that never write secrets to logs.
 //
 // googleapis/gaxios errors carry the full request config, including the
@@ -42,6 +44,9 @@ export function logError(context: string, err: unknown): void {
   console.error(JSON.stringify({ level: "error", context, error: toSafeError(err) }));
 }
 
+// Events that page an operator (lib/alert.ts), not just log.
+const ALERT_EVENTS = new Set(["rate_limited", "ssrf_blocked", "cross_site_request_blocked", "session_rejected", "ai_quota_exhausted"]);
+
 // Security-relevant events (rate-limit hits, blocked SSRF attempts, rejected
 // cross-site requests, invalid input) go out as one structured line each, so
 // they can be alerted on from the host's log drain.
@@ -52,4 +57,14 @@ export function logSecurityEvent(event: string, fields: Record<string, string | 
     safeFields[k] = typeof v === "string" ? redact(v) : v;
   }
   console.warn(JSON.stringify({ level: "security", event, ...safeFields }));
+  if (ALERT_EVENTS.has(event)) {
+    void raiseAlert(event, `Security event: ${event}`, safeFields as Record<string, string | number>);
+  }
+}
+
+// Gemini (and Google APIs generally) report exhausted quota as HTTP 429 /
+// RESOURCE_EXHAUSTED.
+export function isQuotaError(err: unknown): boolean {
+  const safe = toSafeError(err);
+  return safe.status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(safe.message);
 }

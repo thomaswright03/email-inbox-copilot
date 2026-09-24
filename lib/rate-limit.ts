@@ -1,5 +1,4 @@
 import { getSql } from "./db";
-import type { Sql } from "./db";
 import { logError, logSecurityEvent } from "./log";
 
 // Fixed-window rate limiting. With DATABASE_URL set the counters live in
@@ -23,7 +22,7 @@ export const RATE_LIMITS = {
   actions: { name: "actions", limit: envInt("RATE_LIMIT_ACTIONS_PER_MINUTE", 30), windowMs: MINUTE },
   // Gemini calls are only made on a cache miss; these cap what one account,
   // and the whole deployment, can spend in a day.
-  aiPerUser: { name: "ai-user", limit: envInt("AI_CALLS_PER_USER_PER_DAY", 40), windowMs: DAY },
+  aiPerUser: { name: "ai-user", limit: envInt("AI_CALLS_PER_USER_PER_DAY", 60), windowMs: DAY },
   aiGlobal: { name: "ai-global", limit: envInt("AI_CALLS_GLOBAL_PER_DAY", 400), windowMs: DAY },
 } satisfies Record<string, RateLimitRule>;
 
@@ -32,10 +31,10 @@ export type RateLimitResult = { allowed: boolean; retryAfterSeconds: number };
 const MAX_MEMORY_BUCKETS = 10_000;
 const memory = new Map<string, { windowStart: number; count: number }>();
 
-function hitMemory(bucket: string, windowStart: number): number {
+function hitMemory(bucket: string, windowStart: number, cost: number): number {
   const entry = memory.get(bucket);
   if (entry && entry.windowStart === windowStart) {
-    entry.count += 1;
+    entry.count += cost;
     return entry.count;
   }
   if (!entry && memory.size >= MAX_MEMORY_BUCKETS) {
@@ -45,35 +44,21 @@ function hitMemory(bucket: string, windowStart: number): number {
       if (oldest !== undefined) memory.delete(oldest);
     }
   }
-  memory.set(bucket, { windowStart, count: 1 });
-  return 1;
+  memory.set(bucket, { windowStart, count: cost });
+  return cost;
 }
 
-let schemaReady: Promise<void> | null = null;
 
-async function ensureSchema(sql: Sql): Promise<void> {
-  if (!schemaReady) {
-    schemaReady = sql`
-      CREATE TABLE IF NOT EXISTS rate_limit (
-        bucket TEXT NOT NULL,
-        window_start TIMESTAMPTZ NOT NULL,
-        count INTEGER NOT NULL,
-        PRIMARY KEY (bucket, window_start)
-      )
-    `.then(() => undefined);
-    schemaReady.catch(() => {
-      schemaReady = null;
-    });
-  }
-  await schemaReady;
-}
-
-async function hitDb(sql: Sql, bucket: string, windowStart: number): Promise<number> {
-  await ensureSchema(sql);
+async function hitDb(
+  sql: NonNullable<ReturnType<typeof getSql>>,
+  bucket: string,
+  windowStart: number,
+  cost: number
+): Promise<number> {
   const rows = await sql`
     INSERT INTO rate_limit (bucket, window_start, count)
-    VALUES (${bucket}, ${new Date(windowStart).toISOString()}, 1)
-    ON CONFLICT (bucket, window_start) DO UPDATE SET count = rate_limit.count + 1
+    VALUES (${bucket}, ${new Date(windowStart).toISOString()}, ${cost})
+    ON CONFLICT (bucket, window_start) DO UPDATE SET count = rate_limit.count + ${cost}
     RETURNING count
   `;
   if (Math.random() < 0.01) {
@@ -82,7 +67,7 @@ async function hitDb(sql: Sql, bucket: string, windowStart: number): Promise<num
   return Number((rows[0] as { count: number }).count);
 }
 
-export async function consumeRateLimit(rule: RateLimitRule, subject: string): Promise<RateLimitResult> {
+export async function consumeRateLimit(rule: RateLimitRule, subject: string, cost = 1): Promise<RateLimitResult> {
   const now = Date.now();
   const windowStart = now - (now % rule.windowMs);
   const bucket = `${rule.name}:${subject}`;
@@ -92,18 +77,18 @@ export async function consumeRateLimit(rule: RateLimitRule, subject: string): Pr
   const sql = getSql();
   if (sql) {
     try {
-      count = await hitDb(sql, bucket, windowStart);
+      count = await hitDb(sql, bucket, windowStart, cost);
     } catch (err) {
       logError("rate-limit.db", err);
-      count = hitMemory(bucket, windowStart);
+      count = hitMemory(bucket, windowStart, cost);
     }
   } else {
-    count = hitMemory(bucket, windowStart);
+    count = hitMemory(bucket, windowStart, cost);
   }
 
   const allowed = count <= rule.limit;
-  if (!allowed && count === rule.limit + 1) {
-    // Logged once per window, when the limit is first crossed.
+  if (!allowed && count - cost < rule.limit + 1) {
+    // Reported once per window, when the limit is first crossed.
     logSecurityEvent("rate_limited", { rule: rule.name, subject: subject === "global" ? "global" : "user" });
   }
   return { allowed, retryAfterSeconds };
@@ -115,14 +100,15 @@ export class RateLimitError extends Error {
   }
 }
 
-export async function enforceRateLimit(rule: RateLimitRule, subject: string): Promise<void> {
-  const result = await consumeRateLimit(rule, subject);
+export async function enforceRateLimit(rule: RateLimitRule, subject: string, cost = 1): Promise<void> {
+  const result = await consumeRateLimit(rule, subject, cost);
   if (!result.allowed) throw new RateLimitError(result.retryAfterSeconds);
 }
 
-// Spend guard for one Gemini call on behalf of a user: both the per-user and
-// the deployment-wide daily budget must have room.
-export async function enforceAiBudget(userId: string): Promise<void> {
-  await enforceRateLimit(RATE_LIMITS.aiPerUser, userId);
-  await enforceRateLimit(RATE_LIMITS.aiGlobal, "global");
+// Spend guard before `calls` Gemini calls on behalf of a user: both the
+// per-user and the deployment-wide daily budget must have room.
+export async function enforceAiBudget(userId: string, calls = 1): Promise<void> {
+  if (calls <= 0) return;
+  await enforceRateLimit(RATE_LIMITS.aiPerUser, userId, calls);
+  await enforceRateLimit(RATE_LIMITS.aiGlobal, "global", calls);
 }

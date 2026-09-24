@@ -1,18 +1,17 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-import { refreshGoogleAccessToken } from "@/lib/google-auth";
+import { refreshGoogleAccessToken, revokeGoogleToken } from "@/lib/google-auth";
+import { currentSessionVersion, revokeUserSessions } from "@/lib/session-store";
+import { logAuditEvent } from "@/lib/audit";
 import { SESSION_COOKIE_NAME, USE_SECURE_COOKIES } from "@/lib/session-cookie";
 import { LEGAL_VERSION } from "@/content/legal";
 import { logError, logSecurityEvent } from "@/lib/log";
 import { purgeUserCaches } from "@/lib/response-cache";
 
-const GMAIL_SCOPES = [
-  "openid",
-  "email",
-  "profile",
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.modify",
-].join(" ");
+// gmail.modify is the narrowest scope that allows trashing and archiving
+// (and it includes the metadata reads the app does); gmail.readonly would
+// add nothing but full-body read rights, so it isn't requested.
+const GMAIL_SCOPES = ["openid", "email", "profile", "https://www.googleapis.com/auth/gmail.modify"].join(" ");
 
 // Refresh the Google access token this many seconds before it actually
 // expires, so a request never races an about-to-expire token.
@@ -42,10 +41,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   session: {
     strategy: "jwt",
     // The session cookie carries a Gmail-modify refresh token, so it is
-    // bounded: it expires after 7 days without use. updateAge rolls it
-    // forward on activity so an active user isn't signed out mid-week.
-    maxAge: 60 * 60 * 24 * 7,
-    updateAge: 60 * 60,
+    // short-lived: it expires after 12 hours without use (updateAge rolls it
+    // forward while the user is active). Sign-out also revokes the Google
+    // token and every server-side session generation (events.signOut).
+    maxAge: 60 * 60 * 12,
+    updateAge: 60 * 15,
   },
   providers: [
     Google({
@@ -64,10 +64,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       const email = typeof profile?.email === "string" ? profile.email : "";
       if (!email || profile?.email_verified !== true) {
         logSecurityEvent("signin_rejected", { reason: "unverified_email" });
+        await logAuditEvent({ userEmail: email || "(none)", action: "sign_in_rejected", detail: "unverified email" });
         return false;
       }
       if (!isEmailAllowed(email)) {
         logSecurityEvent("signin_rejected", { reason: "not_allowlisted" });
+        await logAuditEvent({ userEmail: email, action: "sign_in_rejected", detail: "not on allowlist" });
         return false;
       }
       return true;
@@ -78,6 +80,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.accessToken = account.access_token;
         token.refreshToken = account.refresh_token;
         token.expiresAt = account.expires_at;
+        try {
+          token.sessionVersion = (await currentSessionVersion(account.providerAccountId)) ?? undefined;
+        } catch (err) {
+          // Without a recorded version the session is rejected by
+          // lib/session.ts, i.e. sign-in fails closed.
+          logError("auth.session-version", err);
+          token.sessionVersion = undefined;
+        }
+        await logAuditEvent({ userEmail: token.email ?? "(none)", action: "sign_in" });
       }
       // The client can only record acceptance of the current legal version;
       // any other value sent through session.update() is ignored.
@@ -105,6 +116,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         };
       } catch (err) {
         logError("auth.refresh", err);
+        await logAuditEvent({ userEmail: token.email ?? "(none)", action: "token_refresh_failed" });
         return { ...token, error: "RefreshAccessTokenError" };
       }
     },
@@ -119,12 +131,27 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
   },
   events: {
-    // Signing out removes this user's cached inbox summaries and spam
-    // verdicts from every cache layer, not just the cookie.
+    // Signing out ends the session everywhere, not just in this browser:
+    // the Google refresh token is revoked (so a copied cookie can no longer
+    // reach Gmail), the user's server-side session generation is bumped (so
+    // any copied cookie is rejected by lib/session.ts), and their cached
+    // inbox summaries and spam verdicts are deleted from every cache layer.
     async signOut(message) {
       const token = "token" in message ? message.token : null;
-      const googleId = typeof token?.googleId === "string" ? token.googleId : null;
-      if (googleId) await purgeUserCaches(googleId);
+      if (!token) return;
+      const googleId = typeof token.googleId === "string" ? token.googleId : null;
+      const refreshToken = typeof token.refreshToken === "string" ? token.refreshToken : null;
+      await Promise.all([
+        refreshToken
+          ? revokeGoogleToken(refreshToken).catch((err) => {
+              logError("auth.revoke", err);
+              return false;
+            })
+          : Promise.resolve(false),
+        googleId ? revokeUserSessions(googleId) : Promise.resolve(),
+        googleId ? purgeUserCaches(googleId) : Promise.resolve(),
+      ]);
+      await logAuditEvent({ userEmail: token.email ?? "(none)", action: "sign_out" });
     },
   },
 });

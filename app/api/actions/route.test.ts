@@ -185,4 +185,15 @@ describe("POST /api/actions", () => {
     expect(statuses.filter((s) => s === 200)).toHaveLength(30);
     expect(statuses.at(-1)).toBe(429);
   });
+
+  it("returns 415 for a non-JSON content type (form/text-plain CSRF shape)", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("v@example.com"));
+    const req = new Request("http://localhost/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain", Origin: "http://localhost" },
+      body: JSON.stringify({ action: "delete", messageId: "m1" }),
+    });
+    expect((await POST(req)).status).toBe(415);
+    expect(trashMessage).not.toHaveBeenCalled();
+  });
 });

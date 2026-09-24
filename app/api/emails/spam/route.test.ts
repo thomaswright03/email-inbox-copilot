@@ -65,14 +65,13 @@ describe("GET /api/emails/spam", () => {
       userEmail: "int-spam-1@example.com",
       action: "classified_spam",
       messageId: "m1",
-      detail: "marketing",
     });
   });
 
   it("omits a message classified as not spam", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-2@example.com"));
     vi.mocked(fetchTodaysMessages).mockResolvedValue([EMAIL]);
-    vi.mocked(classifySpam).mockResolvedValue([{ id: "m1", isSpam: false, reason: "legit" }]);
+    vi.mocked(classifySpam).mockResolvedValue([{ id: "m1", isSpam: false, reason: "legitimate" }]);
 
     const res = await GET(getRequest());
     const body = await res.json();

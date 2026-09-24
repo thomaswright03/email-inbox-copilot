@@ -6,6 +6,7 @@ import { signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { SPAM_REASON_LABEL, type SpamReason } from "@/lib/spam-reasons";
 import {
   Inbox,
   LogOut,
@@ -32,7 +33,7 @@ type SpamCard = {
   subject: string;
   snippet: string;
   hasUnsubscribe: boolean;
-  reason: string;
+  reason: SpamReason;
 };
 
 type Tab = "summary" | "spam";
@@ -386,10 +387,10 @@ export default function Dashboard({ userName }: { userName: string }) {
 
                       <p className="mt-3 line-clamp-2 text-xs text-muted">{card.snippet}</p>
 
-                      {card.reason && (
+                      {SPAM_REASON_LABEL[card.reason] && (
                         <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-warning-soft px-2.5 py-1.5 text-xs text-warning">
                           <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-                          {card.reason}
+                          {SPAM_REASON_LABEL[card.reason]}
                         </div>
                       )}
 
