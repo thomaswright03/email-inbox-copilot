@@ -3,6 +3,8 @@
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
+import Preferences from "./Preferences";
+import { useI18n } from "./I18nProvider";
 
 function GoogleIcon() {
   return (
@@ -28,44 +30,36 @@ function GoogleIcon() {
 }
 
 export default function SignIn() {
+  const { t } = useI18n();
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10"
-        style={{
-          background:
-            "radial-gradient(600px circle at 15% 20%, var(--accent-soft), transparent 60%), radial-gradient(500px circle at 85% 80%, var(--accent-soft), transparent 60%)",
-        }}
-      />
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 py-10">
+      <div aria-hidden className="signin-glow pointer-events-none absolute inset-0 -z-10" />
+      <Preferences className="mb-4 self-end sm:absolute sm:right-4 sm:top-4 sm:mb-0" />
 
       <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-8 shadow-sm">
         <div className="mb-6 flex h-11 w-11 items-center justify-center rounded-xl bg-accent-soft">
-          <Sparkles className="h-5 w-5 text-accent" strokeWidth={2} />
+          <Sparkles className="h-5 w-5 text-accent" strokeWidth={2} aria-hidden />
         </div>
 
-        <h1 className="text-lg font-semibold tracking-tight">Inbox Buddy</h1>
-        <p className="mt-2 text-sm leading-relaxed text-muted">
-          Connect Gmail for a daily summary of what matters, and a spam tab that catches what your junk folder
-          missed.
-        </p>
+        <h1 className="text-lg font-semibold tracking-tight">{t("app.name")}</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted">{t("signin.tagline")}</p>
 
         <button
-          onClick={() => signIn("google")}
-          className="mt-6 flex w-full items-center justify-center gap-2.5 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-medium transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+          onClick={() => void signIn("google")}
+          className="tap-h mt-6 flex w-full items-center justify-center gap-2.5 rounded-lg border border-border bg-surface px-4 text-sm font-medium transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
         >
           <GoogleIcon />
-          Continue with Google
+          {t("signin.continue")}
         </button>
 
         <p className="mt-5 text-center text-xs text-muted">
-          By continuing, you agree to our{" "}
+          {t("signin.agreePrefix")}{" "}
           <Link href="/terms" target="_blank" className="underline underline-offset-2 hover:text-foreground">
-            Terms of Service
+            {t("legal.terms")}
           </Link>{" "}
-          and{" "}
+          {t("signin.and")}{" "}
           <Link href="/privacy" target="_blank" className="underline underline-offset-2 hover:text-foreground">
-            Privacy Policy
+            {t("legal.privacy")}
           </Link>
           .
         </p>

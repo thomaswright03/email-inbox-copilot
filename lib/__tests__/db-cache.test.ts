@@ -37,16 +37,54 @@ describe("db-cache", () => {
 
   it("returns the cached value on a hit", async () => {
     process.env.DATABASE_URL = "postgres://test";
+    const { seal } = await import("../crypto");
+    const stored = seal({ hello: "world" }, "response-cache", "present-key");
     mockSql.mockImplementation((strings: TemplateStringsArray) => {
       const text = strings.join("");
       if (text.includes("SELECT value")) {
-        return Promise.resolve([{ value: { hello: "world" } }]);
+        return Promise.resolve([{ value: stored }]);
       }
       return Promise.resolve([]);
     });
     const { getCachedDb } = await import("../db-cache");
 
     expect(await getCachedDb("present-key")).toEqual({ hello: "world" });
+  });
+
+  it("writes only ciphertext, never the inbox data itself", async () => {
+    process.env.DATABASE_URL = "postgres://test";
+    mockSql.mockResolvedValue([]);
+    const { setCachedDb } = await import("../db-cache");
+
+    await setCachedDb("today:gid:2026-09-24", { subject: "Your bank statement" }, 1000);
+
+    const insert = mockSql.mock.calls.find(([strings]) => (strings as TemplateStringsArray).join("").includes("INSERT"));
+    expect(insert).toBeDefined();
+    const written = JSON.stringify(insert!.slice(1));
+    expect(written).not.toContain("bank statement");
+    expect(written).toContain("ct");
+  });
+
+  it("treats a row sealed under a different key as a miss (no cross-user replay)", async () => {
+    process.env.DATABASE_URL = "postgres://test";
+    const { seal } = await import("../crypto");
+    const stored = seal({ hello: "world" }, "response-cache", "today:user-a:2026-09-24");
+    mockSql.mockImplementation((strings: TemplateStringsArray) =>
+      Promise.resolve(strings.join("").includes("SELECT value") ? [{ value: stored }] : [])
+    );
+    const { getCachedDb } = await import("../db-cache");
+
+    expect(await getCachedDb("today:user-b:2026-09-24")).toBeUndefined();
+  });
+
+  it("treats a legacy plaintext row as a miss", async () => {
+    process.env.DATABASE_URL = "postgres://test";
+    mockSql.mockImplementation((strings: TemplateStringsArray) =>
+      Promise.resolve(strings.join("").includes("SELECT value") ? [{ value: { hello: "world" } }] : [])
+    );
+    const { getCachedDb } = await import("../db-cache");
+
+    expect(await getCachedDb("k")).toBeUndefined();
   });
 
   it("fails open (returns undefined) if the query throws", async () => {

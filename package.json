@@ -2,37 +2,51 @@
   "name": "email-inbox-copilot",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "eval": "vitest run --config evals/vitest.config.ts evals/model.eval.ts",
+    "eval:rules": "vitest run --config evals/vitest.config.ts evals/rules.eval.ts",
+    "db:migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {
-    "@google/genai": "^2.24.0",
-    "@neondatabase/serverless": "^1.1.0",
-    "@tailwindcss/typography": "^0.5.20",
-    "geist": "^1.7.2",
-    "googleapis": "^181.0.0",
-    "lucide-react": "^1.47.0",
+    "@google/genai": "2.24.0",
+    "@neondatabase/serverless": "1.1.0",
+    "geist": "1.7.2",
+    "googleapis": "181.0.0",
+    "lucide-react": "1.47.0",
     "next": "16.3.6",
-    "next-auth": "^5.0.0-beta.32",
+    "next-auth": "5.0.0-beta.32",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
-    "zod": "^4.6.5"
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
+    "zod": "4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@tailwindcss/typography": "0.5.20",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^22.20.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^5.0.1",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
+    "jsdom": "^30.1.1",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^2.1.9"
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
   }
 }

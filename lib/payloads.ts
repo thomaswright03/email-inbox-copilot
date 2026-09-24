@@ -1,0 +1,62 @@
+// Response shapes of the dashboard's API routes, shared with the client.
+import type { RuleGroups } from "./rules";
+import type { SpamReason } from "./spam-reasons";
+
+// "generated": written by Gemini. "off": AI features are not enabled
+// (lib/ai.ts aiEnabled). "unavailable": AI is on but failed, so the
+// rule-based view is shown instead. "budget": AI is on but today's AI
+// budget is used up until `aiResetsAt` (lib/rate-limit.ts), so the
+// rule-based view is shown instead.
+export type AiStatus = "generated" | "off" | "unavailable" | "budget";
+
+export type TodayPayload = {
+  aiStatus: AiStatus;
+  // When the daily AI budget resets (ISO time), with aiStatus "budget".
+  aiResetsAt?: string;
+  summary: string | null;
+  // The AI summary stopped at its length limit and may leave out the last
+  // items (lib/ai.ts summarizeToday); the dashboard says so.
+  summaryIncomplete?: boolean;
+  groups: RuleGroups | null;
+  generatedAt: string;
+  count: number;
+  truncated: boolean;
+  totalEstimate: number;
+  emails: { id: string; threadId: string; from: string; subject: string; date: string }[];
+};
+
+// How the card's Unsubscribe button works (lib/unsubscribe.ts).
+export type CardUnsubscribe =
+  | { kind: "one-click" }
+  | { kind: "link"; url: string }
+  | { kind: "mailto"; composeUrl: string }
+  | null;
+
+export type SpamCardPayload = {
+  id: string;
+  threadId: string;
+  from: string;
+  subject: string;
+  snippet: string;
+  reason: SpamReason;
+  unsubscribe: CardUnsubscribe;
+};
+
+export type SpamPayload = {
+  aiStatus: AiStatus;
+  generatedAt: string;
+  flashcards: SpamCardPayload[];
+  // Possible spam that Gemini hasn't checked yet: more than one load checks
+  // (lib/ai.ts MAX_CLASSIFY_PER_LOAD), or today's AI budget ran out. They
+  // are checked on a later load.
+  unchecked?: number;
+  // When the daily AI budget resets (ISO time), when the budget is why
+  // messages weren't checked (aiStatus "budget", or unchecked > 0).
+  aiResetsAt?: string;
+};
+
+export type ActionName = "delete" | "unsubscribe" | "ignore" | "undo_delete" | "undo_archive" | "undo_ignore";
+
+export type ActionResult =
+  | { ok: true; archived?: boolean; warning?: "archive_failed" }
+  | { ok: false; code: string; error: string };

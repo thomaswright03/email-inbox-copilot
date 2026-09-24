@@ -1,24 +1,59 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* Dark styles apply when the user picked Dark, or picked System (no
+   data-theme attribute) and the OS is dark. See lib/theme.ts. */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme]), :root:not([data-theme]) *) {
+      @slot;
+    }
+  }
+}
+
+/* Touch targets: at least 44x44 px on phone widths and on any
+   coarse-pointer (touch) screen; a compact 36 px with a mouse on wider
+   screens. tap-h sets only the height, for buttons that are already wide. */
+@utility tap-target {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  @media (min-width: 40rem) and (pointer: fine) {
+    min-height: 2.25rem;
+    min-width: 2.25rem;
+  }
+}
+
+@utility tap-h {
+  min-height: 2.75rem;
+  @media (min-width: 40rem) and (pointer: fine) {
+    min-height: 2.25rem;
+  }
+}
+
 :root {
   --background: #fafafa;
   --surface: #ffffff;
   --surface-hover: #f4f4f5;
   --border: #e4e4e7;
   --foreground: #18181b;
-  --muted: #71717a;
+  /* Every text/background pair below is at least 4.5:1 (WCAG AA). */
+  --muted: #63636b;
 
-  --accent: #6366f1;
+  --accent: #4f46e5;
   --accent-foreground: #ffffff;
   --accent-soft: #eef2ff;
 
-  --danger: #ef4444;
+  --danger: #b91c1c;
   --danger-foreground: #ffffff;
   --danger-soft: #fef2f2;
 
-  --warning: #d97706;
+  --warning: #b45309;
   --warning-soft: #fffbeb;
+
+  color-scheme: light;
 }
 
 @theme inline {
@@ -45,7 +80,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --background: #09090b;
     --surface: #18181b;
     --surface-hover: #27272a;
@@ -63,10 +98,42 @@
 
     --warning: #fbbf24;
     --warning-soft: rgba(251, 191, 36, 0.12);
+
+    color-scheme: dark;
   }
+}
+
+:root[data-theme="dark"] {
+  --background: #09090b;
+  --surface: #18181b;
+  --surface-hover: #27272a;
+  --border: #27272a;
+  --foreground: #fafafa;
+  --muted: #a1a1aa;
+
+  --accent: #818cf8;
+  --accent-foreground: #09090b;
+  --accent-soft: rgba(99, 102, 241, 0.16);
+
+  --danger: #f87171;
+  --danger-foreground: #09090b;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.12);
+
+  color-scheme: dark;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+/* Moved out of an inline style attribute so the Content Security Policy
+   (proxy.ts) doesn't need to allow inline styles. */
+.signin-glow {
+  background:
+    radial-gradient(600px circle at 15% 20%, var(--accent-soft), transparent 60%),
+    radial-gradient(500px circle at 85% 80%, var(--accent-soft), transparent 60%);
 }

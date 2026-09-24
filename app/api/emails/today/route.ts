@@ -1,58 +1,80 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { fetchTodaysMessages } from "@/lib/gmail";
-import { summarizeToday } from "@/lib/ai";
-import { getOrSetCached } from "@/lib/response-cache";
+import { aiEnabled, summarizeToday, SUMMARY_LANGUAGES, type SummaryLanguage } from "@/lib/ai";
+import { ruleBasedGroups } from "@/lib/rules";
+import type { AiStatus, TodayPayload } from "@/lib/payloads";
+import { getOrSetCached, userCacheKey } from "@/lib/response-cache";
 import { RouteError } from "@/lib/route-error";
+import { jsonError, rateLimitedResponse, requireSession } from "@/lib/api";
+import { enforceRateLimit, RATE_LIMITS, RateLimitError, reserveAiCalls } from "@/lib/rate-limit";
+import { isQuotaError, logError, logSecurityEvent } from "@/lib/log";
+import { INBOX_CACHE_TTL_MS, maybeRefresh, readInbox } from "@/lib/inbox";
 
-const CACHE_TTL_MS = 5 * 60 * 1000;
+function languageFrom(req: Request): SummaryLanguage {
+  const lang = new URL(req.url).searchParams.get("lang");
+  return lang && lang in SUMMARY_LANGUAGES ? (lang as SummaryLanguage) : "en";
+}
 
-async function buildTodayPayload(accessToken: string) {
-  let emails;
-  try {
-    emails = await fetchTodaysMessages(accessToken);
-  } catch (err) {
-    console.error("Failed to fetch today's messages from Gmail:", err);
-    throw new RouteError("Couldn't reach Gmail right now. Try again in a moment.", 502);
-  }
+async function buildTodayPayload(accessToken: string, userId: string, language: SummaryLanguage): Promise<TodayPayload> {
+  const inbox = await readInbox(accessToken, userId, "today");
+  const { emails } = inbox;
 
-  let summary: string;
-  try {
-    summary = await summarizeToday(emails);
-  } catch (err) {
-    console.error("Failed to generate summary from Gemini:", err);
-    throw new RouteError("Couldn't generate your summary right now. Try again in a moment.", 502);
+  let summary: string | null = null;
+  let summaryIncomplete = false;
+  let aiStatus: AiStatus = aiEnabled() ? "generated" : "off";
+  let aiResetsAt: string | undefined;
+  if (aiStatus === "generated" && emails.length > 0) {
+    const grant = await reserveAiCalls(userId, 1);
+    if (grant.granted === 0) {
+      // Over today's AI budget (or it can't be checked): the rule-based
+      // view, and the user is told when AI summaries come back.
+      aiStatus = grant.limitedBy === "budget" ? "budget" : "unavailable";
+      if (aiStatus === "budget") aiResetsAt = grant.resetsAt;
+    } else {
+      try {
+        const result = await summarizeToday(emails, language);
+        summary = result?.text ?? null;
+        summaryIncomplete = result?.incomplete ?? false;
+        if (!summary) aiStatus = "unavailable";
+      } catch (err) {
+        // Any AI failure degrades to the rule-based view instead of failing the page.
+        aiStatus = "unavailable";
+        logError("today.gemini", err);
+        if (isQuotaError(err)) logSecurityEvent("ai_quota_exhausted", { route: "today" });
+      }
+    }
   }
 
   return {
+    aiStatus,
+    ...(aiResetsAt ? { aiResetsAt } : {}),
     summary,
+    ...(summaryIncomplete ? { summaryIncomplete } : {}),
+    groups: summary ? null : ruleBasedGroups(emails),
+    generatedAt: new Date().toISOString(),
     count: emails.length,
-    emails: emails.map((e) => ({
-      id: e.id,
-      from: e.from,
-      subject: e.subject,
-      snippet: e.snippet,
-      date: e.date,
-    })),
+    truncated: inbox.truncated,
+    totalEstimate: inbox.totalEstimate,
+    emails: emails.map((e) => ({ id: e.id, threadId: e.threadId, from: e.from, subject: e.subject, date: e.date })),
   };
 }
 
-export async function GET() {
-  const session = await auth();
-  if (!session?.accessToken) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
+export async function GET(req: Request) {
+  const session = await requireSession(req);
+  if (session instanceof NextResponse) return session;
 
-  const userEmail = session.user?.email ?? "unknown";
-  const cacheKey = `today:${userEmail}:${new Date().toISOString().slice(0, 10)}`;
-
+  const language = languageFrom(req);
   try {
-    const payload = await getOrSetCached(cacheKey, CACHE_TTL_MS, () => buildTodayPayload(session.accessToken!));
+    await enforceRateLimit(RATE_LIMITS.inboxReads, session.userId);
+    await maybeRefresh(req, session.userId, "today");
+    const payload = await getOrSetCached(
+      userCacheKey("today", session.userId, undefined, language),
+      INBOX_CACHE_TTL_MS,
+      () => buildTodayPayload(session.accessToken, session.userId, language)
+    );
     return NextResponse.json(payload);
   } catch (err) {
-    if (err instanceof RouteError) {
-      return NextResponse.json({ error: err.message }, { status: err.status });
-    }
+    if (err instanceof RateLimitError) return rateLimitedResponse(err);
+    if (err instanceof RouteError) return jsonError(err.message, err.status, undefined, err.code);
     throw err;
   }
 }
