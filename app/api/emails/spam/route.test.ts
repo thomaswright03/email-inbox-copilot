@@ -7,14 +7,14 @@ vi.mock("@/lib/gmail", async (importOriginal) => {
 });
 vi.mock("@/lib/ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/ai")>();
-  return { ...actual, classifySpam: vi.fn() };
+  return { ...actual, classifyCandidates: vi.fn() };
 });
 vi.mock("@/lib/audit", () => ({ logAuditEvent: vi.fn() }));
 
 import { getGoogleSession } from "@/lib/session";
 import { fetchRecentMessages, type ParsedEmail } from "@/lib/gmail";
 import { markIgnored } from "@/lib/ignored";
-import { classifySpam } from "@/lib/ai";
+import { classifyCandidates, type SpamVerdict } from "@/lib/ai";
 import { logAuditEvent } from "@/lib/audit";
 import { GET } from "./route";
 
@@ -38,6 +38,11 @@ const EMAIL: ParsedEmail = {
   isInInbox: true,
 };
 
+// What classifyCandidates returns when every email got a usable answer.
+function classified(verdicts: SpamVerdict[]) {
+  return { verdicts, checkedIds: verdicts.map((v) => v.id), attempted: verdicts.length, error: null };
+}
+
 function inbox(emails: ParsedEmail[]) {
   return { emails, truncated: false, totalEstimate: emails.length };
 }
@@ -57,7 +62,7 @@ describe("GET /api/emails/spam", () => {
   it("builds flashcards only for messages classified as spam, and logs each one", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-1@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(classifySpam).mockResolvedValue([{ id: "m1", isSpam: true, reason: "marketing" }]);
+    vi.mocked(classifyCandidates).mockResolvedValue(classified([{ id: "m1", isSpam: true, reason: "marketing" }]));
 
     const res = await GET(getRequest());
     const body = await res.json();
@@ -84,7 +89,7 @@ describe("GET /api/emails/spam", () => {
   it("omits a message classified as not spam", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-2@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(classifySpam).mockResolvedValue([{ id: "m1", isSpam: false, reason: "legitimate" }]);
+    vi.mocked(classifyCandidates).mockResolvedValue(classified([{ id: "m1", isSpam: false, reason: "legitimate" }]));
 
     const res = await GET(getRequest());
     const body = await res.json();
@@ -96,7 +101,7 @@ describe("GET /api/emails/spam", () => {
   it("falls back to rule-based flags when Gemini classification fails", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-3@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(classifySpam).mockRejectedValue(new Error("Gemini down"));
+    vi.mocked(classifyCandidates).mockResolvedValue({ verdicts: [], checkedIds: [], attempted: 1, error: new Error("Gemini down") });
 
     const res = await GET(getRequest());
     const body = await res.json();
@@ -119,12 +124,12 @@ describe("GET /api/emails/spam", () => {
   it("leaves out a message the user marked Not spam, even from a cached response", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-ignored@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(classifySpam).mockResolvedValue([{ id: "m1", isSpam: true, reason: "marketing" }]);
+    vi.mocked(classifyCandidates).mockResolvedValue(classified([{ id: "m1", isSpam: true, reason: "marketing" }]));
 
     expect((await (await GET(getRequest())).json()).flashcards).toHaveLength(1);
     await markIgnored("gid-int-spam-ignored@example.com", "m1");
     expect((await (await GET(getRequest())).json()).flashcards).toEqual([]);
-    expect(classifySpam).toHaveBeenCalledTimes(1);
+    expect(classifyCandidates).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -133,7 +138,7 @@ describe("GET /api/emails/spam", () => {
   ])("describes how to unsubscribe for %s", async (_, headers, expected) => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor(`int-spam-unsub-${expected?.kind ?? "none"}@example.com`));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([{ ...EMAIL, ...headers }]));
-    vi.mocked(classifySpam).mockResolvedValue([{ id: "m1", isSpam: true, reason: "marketing" }]);
+    vi.mocked(classifyCandidates).mockResolvedValue(classified([{ id: "m1", isSpam: true, reason: "marketing" }]));
 
     const body = await (await GET(getRequest())).json();
 
@@ -143,12 +148,12 @@ describe("GET /api/emails/spam", () => {
   it("does not re-log classification events when a second request is served from cache", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-4@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(classifySpam).mockResolvedValue([{ id: "m1", isSpam: true, reason: "marketing" }]);
+    vi.mocked(classifyCandidates).mockResolvedValue(classified([{ id: "m1", isSpam: true, reason: "marketing" }]));
 
     await GET(getRequest());
     await GET(getRequest());
 
-    expect(classifySpam).toHaveBeenCalledTimes(1);
+    expect(classifyCandidates).toHaveBeenCalledTimes(1);
     expect(logAuditEvent).toHaveBeenCalledTimes(1);
   });
 
@@ -162,9 +167,60 @@ describe("GET /api/emails/spam", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(classifySpam).not.toHaveBeenCalled();
+    expect(classifyCandidates).not.toHaveBeenCalled();
     expect(body.aiStatus).toBe("off");
     expect(body.flashcards).toHaveLength(1);
     expect(body.flashcards[0]).toMatchObject({ id: "m1", reason: "newsletter" });
+  });
+
+  it("checks every candidate with AI across loads: 20 per load, the rest on the next one, each only once", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-25@example.com"));
+    const promos = Array.from({ length: 25 }, (_, i) => ({ ...EMAIL, id: `p${i}`, threadId: `tp${i}` }));
+    vi.mocked(fetchRecentMessages).mockResolvedValue(inbox(promos));
+    vi.mocked(classifyCandidates).mockImplementation(async (candidates) =>
+      classified(candidates.map((e) => ({ id: e.id, isSpam: true, reason: "marketing" as const })))
+    );
+
+    const first = await (await GET(getRequest())).json();
+    expect(vi.mocked(classifyCandidates).mock.calls[0][0]).toHaveLength(20);
+    expect(first).toMatchObject({ aiStatus: "generated", unchecked: 5 });
+    expect(first.aiResetsAt).toBeUndefined();
+    expect(first.flashcards).toHaveLength(20);
+
+    const second = await (await GET(new Request("http://localhost/api/emails/spam?refresh=1"))).json();
+    const secondBatch = vi.mocked(classifyCandidates).mock.calls[1][0].map((e) => e.id);
+    expect(secondBatch).toHaveLength(5);
+    expect(secondBatch.some((id) => first.flashcards.some((c: { id: string }) => c.id === id))).toBe(false);
+    expect(second.unchecked).toBeUndefined();
+    expect(second.flashcards).toHaveLength(25);
+
+    // Everything is checked now: another Refresh sends nothing to Gemini.
+    await GET(new Request("http://localhost/api/emails/spam?refresh=1"));
+    expect(classifyCandidates).toHaveBeenCalledTimes(2);
+  });
+
+  it("with the default AI budget, 10 uncached loads in a day all get AI verdicts", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-10loads@example.com"));
+    let round = 0;
+    vi.mocked(classifyCandidates).mockImplementation(async (candidates) =>
+      classified(candidates.map((e) => ({ id: e.id, isSpam: true, reason: "marketing" as const })))
+    );
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      for (let load = 0; load < 10; load++) {
+        // A new batch of 10 promotional emails arrives before every load,
+        // and each load re-reads Gmail (the cached list is a minute old).
+        vi.setSystemTime(Date.now() + 60_000);
+        round++;
+        const fresh = Array.from({ length: 10 }, (_, i) => ({ ...EMAIL, id: `r${round}x${i}`, threadId: `r${round}x${i}` }));
+        vi.mocked(fetchRecentMessages).mockResolvedValue(inbox(fresh));
+        const body = await (await GET(new Request("http://localhost/api/emails/spam?refresh=1"))).json();
+        expect(body.aiStatus).toBe("generated");
+        expect(body.flashcards.map((c: { id: string }) => c.id)).toEqual(fresh.map((e) => e.id));
+      }
+      expect(classifyCandidates).toHaveBeenCalledTimes(10);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

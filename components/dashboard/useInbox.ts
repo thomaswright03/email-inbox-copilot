@@ -69,5 +69,14 @@ export function useInbox(locale: Locale) {
     setRefreshing(false);
   }, [loadToday, loadSpam]);
 
-  return { today, spam, cards, setCards, refreshing, refresh, retryToday, retrySpam };
+  // Asks the server to check the next batch of possible spam with AI (the
+  // ones already checked are cached there), keeping the list on screen.
+  const [checkingSpam, setCheckingSpam] = useState(false);
+  const checkMoreSpam = useCallback(async () => {
+    setCheckingSpam(true);
+    await loadSpam(true);
+    setCheckingSpam(false);
+  }, [loadSpam]);
+
+  return { today, spam, cards, setCards, refreshing, refresh, retryToday, retrySpam, checkingSpam, checkMoreSpam };
 }

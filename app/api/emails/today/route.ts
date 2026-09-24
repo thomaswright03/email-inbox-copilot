@@ -5,7 +5,7 @@ import type { AiStatus, TodayPayload } from "@/lib/payloads";
 import { getOrSetCached, userCacheKey } from "@/lib/response-cache";
 import { RouteError } from "@/lib/route-error";
 import { jsonError, rateLimitedResponse, requireSession } from "@/lib/api";
-import { enforceAiBudget, enforceRateLimit, RATE_LIMITS, RateLimitError } from "@/lib/rate-limit";
+import { enforceRateLimit, RATE_LIMITS, RateLimitError, reserveAiCalls } from "@/lib/rate-limit";
 import { isQuotaError, logError, logSecurityEvent } from "@/lib/log";
 import { INBOX_CACHE_TTL_MS, maybeRefresh, readInbox } from "@/lib/inbox";
 
@@ -20,16 +20,21 @@ async function buildTodayPayload(accessToken: string, userId: string, language: 
 
   let summary: string | null = null;
   let aiStatus: AiStatus = aiEnabled() ? "generated" : "off";
+  let aiResetsAt: string | undefined;
   if (aiStatus === "generated" && emails.length > 0) {
-    try {
-      await enforceAiBudget(userId);
-      summary = await summarizeToday(emails, language);
-      if (!summary) aiStatus = "unavailable";
-    } catch (err) {
-      // Any AI failure, the daily AI budget included, degrades to the
-      // rule-based view instead of failing the page.
-      aiStatus = "unavailable";
-      if (!(err instanceof RateLimitError)) {
+    const grant = await reserveAiCalls(userId, 1);
+    if (grant.granted === 0) {
+      // Over today's AI budget (or it can't be checked): the rule-based
+      // view, and the user is told when AI summaries come back.
+      aiStatus = grant.limitedBy === "budget" ? "budget" : "unavailable";
+      if (aiStatus === "budget") aiResetsAt = grant.resetsAt;
+    } else {
+      try {
+        summary = await summarizeToday(emails, language);
+        if (!summary) aiStatus = "unavailable";
+      } catch (err) {
+        // Any AI failure degrades to the rule-based view instead of failing the page.
+        aiStatus = "unavailable";
         logError("today.gemini", err);
         if (isQuotaError(err)) logSecurityEvent("ai_quota_exhausted", { route: "today" });
       }
@@ -38,6 +43,7 @@ async function buildTodayPayload(accessToken: string, userId: string, language: 
 
   return {
     aiStatus,
+    ...(aiResetsAt ? { aiResetsAt } : {}),
     summary,
     groups: summary ? null : ruleBasedGroups(emails),
     generatedAt: new Date().toISOString(),

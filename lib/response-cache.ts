@@ -2,9 +2,11 @@ import { getCached, setCached, invalidateCached, invalidateCachedByPrefix } from
 import { getCachedDb, setCachedDb, invalidateCachedDb, invalidateCachedDbByPrefix } from "./db-cache";
 
 // Every per-user cache key starts with one of these, followed by the user's
-// stable Google account id — see userCacheKey().
-const USER_KEY_KINDS = ["messages", "today", "spam"] as const;
-export type UserCacheKind = (typeof USER_KEY_KINDS)[number];
+// stable Google account id — see userCacheKey() (and lib/verdict-cache.ts
+// for "verdicts").
+const INBOX_KEY_KINDS = ["messages", "today", "spam"] as const;
+const USER_KEY_KINDS = [...INBOX_KEY_KINDS, "verdicts"] as const;
+export type UserCacheKind = (typeof INBOX_KEY_KINDS)[number];
 
 export function userCacheKey(kind: UserCacheKind, userId: string, date = new Date(), variant?: string): string {
   if (!userId) throw new Error("userCacheKey requires a user id");
@@ -60,8 +62,9 @@ export async function peekCached<T>(key: string): Promise<T | undefined> {
 }
 
 // Drops one user's cached inbox data (on Refresh, and after an action
-// changes the mailbox) so the next read goes back to Gmail.
-export async function invalidateUserInbox(userId: string, kinds: readonly UserCacheKind[] = USER_KEY_KINDS): Promise<void> {
+// changes the mailbox) so the next read goes back to Gmail. Spam verdicts
+// stay: a message's verdict doesn't change because it was reloaded.
+export async function invalidateUserInbox(userId: string, kinds: readonly UserCacheKind[] = INBOX_KEY_KINDS): Promise<void> {
   await Promise.all(
     kinds.map(async (kind) => {
       // By prefix, so every variant (e.g. each summary language) goes too.

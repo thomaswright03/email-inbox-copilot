@@ -17,6 +17,7 @@ import ConfirmDialog from "./ConfirmDialog";
 import Toast, { type ToastState } from "./Toast";
 import { ErrorState, SkeletonCards } from "./States";
 import { errorMessageKey } from "./errors";
+import { formatResetTime } from "./format";
 import { useInbox } from "./useInbox";
 
 type ActionResponse = { ok: true; archived?: boolean; warning?: string };
@@ -165,6 +166,7 @@ export default function Dashboard({
   }
 
   const spamCount = inbox.spam.status === "ready" ? cards.length : null;
+  const resetTime = (iso: string | undefined) => (iso ? formatResetTime(iso, locale) : "");
 
   return (
     <div className="min-h-screen">
@@ -194,7 +196,35 @@ export default function Dashboard({
             </div>
           ) : (
             <div>
-              <p className="mb-3 text-xs text-muted">{t(`spam.ai.${inbox.spam.data.aiStatus}`)}</p>
+              {/* The source caption describes the cards, so it is left out
+                  when there are none (unless the AI budget ran out, which
+                  the user needs to know either way). */}
+              {(cards.length > 0 || inbox.spam.data.aiStatus === "budget") && (
+                <p className="mb-3 text-xs text-muted">
+                  {t(`spam.ai.${inbox.spam.data.aiStatus}`, { time: resetTime(inbox.spam.data.aiResetsAt) })}
+                </p>
+              )}
+              {(inbox.spam.data.unchecked ?? 0) > 0 && (
+                <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-muted">
+                  <span>
+                    {inbox.spam.data.aiResetsAt
+                      ? t("spam.uncheckedBudget", {
+                          count: inbox.spam.data.unchecked ?? 0,
+                          time: resetTime(inbox.spam.data.aiResetsAt),
+                        })
+                      : t("spam.unchecked", { count: inbox.spam.data.unchecked ?? 0 })}
+                  </span>
+                  {!inbox.spam.data.aiResetsAt && (
+                    <button
+                      onClick={() => void inbox.checkMoreSpam()}
+                      disabled={inbox.checkingSpam}
+                      className="tap-h inline-flex items-center rounded-lg border border-border bg-surface px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {inbox.checkingSpam ? t("spam.checking") : t("spam.checkMore")}
+                    </button>
+                  )}
+                </div>
+              )}
               {cards.length > 0 ? (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {cards.map((card) => (

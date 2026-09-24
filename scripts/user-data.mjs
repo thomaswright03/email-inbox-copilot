@@ -20,9 +20,9 @@
 //
 // Tables covered: audit_log, consent_records, user_sessions,
 // ignored_messages (Not spam choices), response_cache (keys
-// "messages:<id>:...", "today:<id>:..." and "spam:<id>:..."; values are
-// encrypted and expire within 5 minutes, so only keys and expiry are
-// exported) and rate_limit (buckets "<rule>:<id>"). Nothing else in the database, and
+// "messages:<id>:...", "today:<id>:...", "spam:<id>:..." and
+// "verdicts:<id>:..."; values are encrypted and expire within 5 minutes,
+// or 26 hours for spam verdicts, so only keys and expiry are exported) and rate_limit (buckets "<rule>:<id>"). Nothing else in the database, and
 // nothing outside it except the host's log drain, holds per-user data;
 // log lines expire under the host's own log retention.
 import { createHmac, hkdfSync, timingSafeEqual } from "node:crypto";
@@ -65,7 +65,7 @@ const sql = neon(url);
 
 // LIKE patterns: escape the wildcard characters an id may contain.
 const likeId = googleId.replace(/[\\%_]/g, (c) => `\\${c}`);
-const cachePatterns = [`messages:${likeId}:%`, `today:${likeId}:%`, `spam:${likeId}:%`];
+const cachePatterns = [`messages:${likeId}:%`, `today:${likeId}:%`, `spam:${likeId}:%`, `verdicts:${likeId}:%`];
 const ratePattern = `%:${likeId}`;
 
 if (command === "export") {
@@ -74,7 +74,7 @@ if (command === "export") {
     sql.query("SELECT legal_version, accepted_at FROM consent_records WHERE google_id = $1 ORDER BY accepted_at", [googleId]),
     sql.query("SELECT version, updated_at FROM user_sessions WHERE google_id = $1", [googleId]),
     sql.query("SELECT message_id, created_at FROM ignored_messages WHERE google_id = $1 ORDER BY created_at", [googleId]),
-    sql.query("SELECT key, expires_at FROM response_cache WHERE key LIKE $1 OR key LIKE $2 OR key LIKE $3", cachePatterns),
+    sql.query("SELECT key, expires_at FROM response_cache WHERE key LIKE $1 OR key LIKE $2 OR key LIKE $3 OR key LIKE $4", cachePatterns),
     sql.query("SELECT bucket, window_start, count FROM rate_limit WHERE bucket LIKE $1", [ratePattern]),
   ]);
   const report = {
@@ -95,7 +95,7 @@ if (command === "export") {
     sql.query("DELETE FROM consent_records WHERE google_id = $1", [googleId]),
     sql.query("DELETE FROM user_sessions WHERE google_id = $1", [googleId]),
     sql.query("DELETE FROM ignored_messages WHERE google_id = $1", [googleId]),
-    sql.query("DELETE FROM response_cache WHERE key LIKE $1 OR key LIKE $2 OR key LIKE $3", cachePatterns),
+    sql.query("DELETE FROM response_cache WHERE key LIKE $1 OR key LIKE $2 OR key LIKE $3 OR key LIKE $4", cachePatterns),
     sql.query("DELETE FROM rate_limit WHERE bucket LIKE $1", [ratePattern]),
   ], { fullResults: true });
   const [audit, consent, sessions, notSpam, cache, rate] = results.map((r) => r.rowCount ?? 0);

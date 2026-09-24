@@ -9,6 +9,7 @@ import type { TodayPayload } from "@/lib/payloads";
 import { useI18n } from "../I18nProvider";
 import { ErrorState, SkeletonLines } from "./States";
 import { errorMessageKey } from "./errors";
+import { formatResetTime } from "./format";
 import type { LoadState } from "./useInbox";
 
 type Email = TodayPayload["emails"][number];
@@ -144,7 +145,9 @@ export default function SummaryPanel({
 
       {data && data.count > 0 && (
         <>
-          <p className="mt-2 text-xs text-muted">{t(`summary.ai.${data.aiStatus}`)}</p>
+          <p className="mt-2 text-xs text-muted">
+            {t(`summary.ai.${data.aiStatus}`, { time: data.aiResetsAt ? formatResetTime(data.aiResetsAt, locale) : "" })}
+          </p>
           {data.summary && (
             <details className="mt-4 rounded-2xl border border-border bg-surface px-5 py-3">
               <summary className="tap-h flex cursor-pointer items-center text-sm font-medium">

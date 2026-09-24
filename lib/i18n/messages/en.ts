@@ -73,6 +73,8 @@ export const en = {
     "AI features are off, so today's mail is sorted by simple rules instead of being summarized. Check your inbox for anything important.",
   "summary.ai.unavailable":
     "The AI summary isn't available right now, so this is a simple rule-based list. Check your inbox for anything important.",
+  "summary.ai.budget":
+    "Today's AI allowance is used up, so this is a simple rule-based list. AI summaries come back at {time}. Check your inbox for anything important.",
   "summary.group.toCheck": "Messages to check ({count})",
   "summary.group.bulk": "Likely promotional or bulk ({count})",
   "summary.allMessages": "All messages ({count})",
@@ -83,6 +85,16 @@ export const en = {
   "spam.ai.off": "Flagged by simple rules (AI is off). These are suggestions and can be wrong, so check each one before you act.",
   "spam.ai.unavailable":
     "AI spam checks aren't available right now, so these were flagged by simple rules. Check each one before you act.",
+  "spam.ai.budget":
+    "Today's AI allowance is used up, so simple rules are checking for spam until {time}. These are suggestions and can be wrong, so check each one before you act.",
+  "spam.unchecked_one": "{count} more possible spam email hasn't been checked yet.",
+  "spam.unchecked_other": "{count} more possible spam emails haven't been checked yet.",
+  "spam.uncheckedBudget_one":
+    "{count} more possible spam email will be checked by AI at {time}, when today's AI allowance resets.",
+  "spam.uncheckedBudget_other":
+    "{count} more possible spam emails will be checked by AI at {time}, when today's AI allowance resets.",
+  "spam.checkMore": "Check now",
+  "spam.checking": "Checking…",
   "spam.empty": "No suspected spam in your inbox from the last 24 hours.",
   "spam.reason.marketing": "Looks like marketing or a promotion",
   "spam.reason.newsletter": "Looks like a newsletter or bulk mailing",

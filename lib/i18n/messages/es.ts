@@ -74,6 +74,8 @@ export const es: Messages = {
     "Las funciones de IA están desactivadas, así que el correo de hoy se ordena con reglas sencillas en lugar de resumirse. Revisa tu bandeja para todo lo importante.",
   "summary.ai.unavailable":
     "El resumen con IA no está disponible en este momento, así que esta es una lista sencilla basada en reglas. Revisa tu bandeja para todo lo importante.",
+  "summary.ai.budget":
+    "La cuota diaria de IA se ha agotado, así que esta es una lista sencilla basada en reglas. Los resúmenes con IA vuelven a las {time}. Revisa tu bandeja para todo lo importante.",
   "summary.group.toCheck": "Mensajes para revisar ({count})",
   "summary.group.bulk": "Probablemente promocionales o masivos ({count})",
   "summary.allMessages": "Todos los mensajes ({count})",
@@ -86,6 +88,16 @@ export const es: Messages = {
     "Marcados con reglas sencillas (la IA está desactivada). Son sugerencias y pueden ser incorrectas, así que revisa cada una antes de actuar.",
   "spam.ai.unavailable":
     "La detección de spam con IA no está disponible en este momento, así que estos se marcaron con reglas sencillas. Revisa cada uno antes de actuar.",
+  "spam.ai.budget":
+    "La cuota diaria de IA se ha agotado, así que hasta las {time} el spam se detecta con reglas sencillas. Son sugerencias y pueden ser incorrectas, así que revisa cada una antes de actuar.",
+  "spam.unchecked_one": "{count} posible correo de spam más aún no se ha revisado.",
+  "spam.unchecked_other": "{count} posibles correos de spam más aún no se han revisado.",
+  "spam.uncheckedBudget_one":
+    "{count} posible correo de spam más se revisará con IA a las {time}, cuando se renueve la cuota diaria de IA.",
+  "spam.uncheckedBudget_other":
+    "{count} posibles correos de spam más se revisarán con IA a las {time}, cuando se renueve la cuota diaria de IA.",
+  "spam.checkMore": "Revisar ahora",
+  "spam.checking": "Revisando…",
   "spam.empty": "No hay spam sospechoso en tu bandeja de las últimas 24 horas.",
   "spam.reason.marketing": "Parece marketing o una promoción",
   "spam.reason.newsletter": "Parece un boletín o un envío masivo",

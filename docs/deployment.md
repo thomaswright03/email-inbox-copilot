@@ -86,10 +86,37 @@ Every environment has its own value for every secret (see `SECURITY.md`, "Enviro
 | `GEMINI_PAID_TIER_PROJECT` | the paid project id, or empty (AI off) | same | empty unless the key is paid |
 | `ALERT_WEBHOOK_URL` | Slack/Discord incoming webhook (https) | optional | empty |
 | `AUDIT_RETENTION_DAYS` | optional, default 90 | optional | optional |
+| `AI_CALLS_PER_USER_PER_DAY` / `AI_CALLS_GLOBAL_PER_DAY` | optional, defaults 250 / 3000 (see "AI budget" below) | optional | optional |
 | `AUTH_TRUST_HOST` | only on hosts other than Vercel: `true` when a proxy you control sets the Host header | same | not needed |
 
 Never set these at runtime: `MIGRATION_DATABASE_URL` (the owner connection) and
 `GMAIL_API_ROOT_URL` (end-to-end tests only). The startup check flags both.
+
+### AI budget
+
+Two daily caps bound Gemini spend (`lib/rate-limit.ts`): `AI_CALLS_PER_USER_PER_DAY`
+(default **250**) and `AI_CALLS_GLOBAL_PER_DAY` for the whole deployment (default
+**3000**). Only model calls actually made are counted.
+
+How the defaults are sized:
+
+| Per user, per day | Calls |
+|---|---|
+| Summary: about 20 uncached loads (first visit, Refresh, or a new language; cached 5 minutes otherwise), 1 call each | 20 |
+| Spam checks: each suspicious email is checked once and its verdict kept for a day (`lib/verdict-cache.ts`); the 24-hour window holds at most 100 messages | up to 100 |
+| **Heavy day** | **~120** |
+
+The per-user default is about twice a heavy day. The deployment default covers 20 partners
+having an ordinary day at the same time (20 × ~120 = 2400) with headroom; raise it by
+about 150 per partner beyond 20. At flash-lite-class prices (see the README) a full
+deployment budget costs on the order of a few dollars a day, and much less in practice.
+
+**When the day resets:** the window is the **UTC day**, so budgets come back at 00:00 UTC
+(for example 8 PM EDT or 5 PM PDT, 1 or 2 AM in Western Europe). When a budget runs out,
+the dashboard shows the rule-based view and says, in the user's language, that today's
+AI allowance is used up and the local time it comes back; possible spam that wasn't checked
+yet is counted on the Spam tab. Each run-out logs an `ai_budget_exhausted` security event
+(and an alert, if `ALERT_WEBHOOK_URL` is set). Raise the caps if that happens on ordinary days.
 
 ## 4. Deploy (Vercel)
 

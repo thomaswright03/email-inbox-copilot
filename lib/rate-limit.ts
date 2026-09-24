@@ -25,9 +25,15 @@ export const RATE_LIMITS = {
   inboxReads: { name: "inbox-reads", limit: envInt("RATE_LIMIT_INBOX_READS_PER_MINUTE", 20), windowMs: MINUTE },
   actions: { name: "actions", limit: envInt("RATE_LIMIT_ACTIONS_PER_MINUTE", 30), windowMs: MINUTE },
   // Gemini calls are only made on a cache miss; these cap what one account,
-  // and the whole deployment, can spend in a day.
-  aiPerUser: { name: "ai-user", limit: envInt("AI_CALLS_PER_USER_PER_DAY", 60), windowMs: DAY, requireShared: true },
-  aiGlobal: { name: "ai-global", limit: envInt("AI_CALLS_GLOBAL_PER_DAY", 400), windowMs: DAY, requireShared: true },
+  // and the whole deployment, can spend in a day. Sizing (docs/deployment.md
+  // "AI budget"): a heavy user makes about 20 uncached loads a day (1
+  // summary call each, plus one per summary language) and gets at most ~100
+  // new spam candidates a day (each email is classified once, then its
+  // verdict is cached), so ~120 calls; the per-user default doubles that.
+  // The deployment-wide default covers 20 such users with headroom. The
+  // window is the UTC day (resets at 00:00 UTC).
+  aiPerUser: { name: "ai-user", limit: envInt("AI_CALLS_PER_USER_PER_DAY", 250), windowMs: DAY, requireShared: true },
+  aiGlobal: { name: "ai-global", limit: envInt("AI_CALLS_GLOBAL_PER_DAY", 3000), windowMs: DAY, requireShared: true },
 } satisfies Record<string, RateLimitRule>;
 
 export type RateLimitResult = { allowed: boolean; retryAfterSeconds: number };
@@ -37,6 +43,8 @@ const memory = new Map<string, { windowStart: number; count: number }>();
 
 function hitMemory(bucket: string, windowStart: number, cost: number): number {
   const entry = memory.get(bucket);
+  // Giving calls back to a window that has already been replaced: nothing to do.
+  if (cost < 0 && entry?.windowStart !== windowStart) return 0;
   if (entry && entry.windowStart === windowStart) {
     entry.count += cost;
     return entry.count;
@@ -117,10 +125,107 @@ export async function enforceRateLimit(rule: RateLimitRule, subject: string, cos
   if (!result.allowed) throw new RateLimitError(result.retryAfterSeconds);
 }
 
-// Spend guard before `calls` Gemini calls on behalf of a user: both the
+// When the current fixed window of `rule` ends.
+export function windowResetsAt(rule: RateLimitRule, now = Date.now()): Date {
+  return new Date(now - (now % rule.windowMs) + rule.windowMs);
+}
+
+// Adds `delta` (negative to give calls back) to one counter of the current
+// window and returns the new count, or null when the shared counter is
+// required but can't be reached.
+async function adjustCounter(rule: RateLimitRule, subject: string, delta: number, windowStart: number): Promise<number | null> {
+  const bucket = `${rule.name}:${subject}`;
+  const sharedOnly = rule.requireShared === true && process.env.NODE_ENV === "production";
+  const sql = getSql();
+  if (sql) {
+    try {
+      return await hitDb(sql, bucket, windowStart, delta);
+    } catch (err) {
+      logError("rate-limit.db", err);
+      if (sharedOnly) return null;
+    }
+  } else if (sharedOnly) {
+    return null;
+  }
+  return hitMemory(bucket, windowStart, delta);
+}
+
+// Takes up to `wanted` calls from `rule`'s budget and returns how many were
+// granted; anything over the limit is given straight back, so a refused
+// request doesn't use up budget.
+async function takeUpTo(rule: RateLimitRule, subject: string, wanted: number, windowStart: number): Promise<number | null> {
+  const count = await adjustCounter(rule, subject, wanted, windowStart);
+  if (count === null) return null;
+  const over = Math.max(0, count - rule.limit);
+  const granted = Math.max(0, wanted - over);
+  if (granted < wanted) {
+    await adjustCounter(rule, subject, -(wanted - granted), windowStart);
+    // Reported once per window: when this request is the one that runs out.
+    if (count - wanted < rule.limit) {
+      logSecurityEvent("ai_budget_exhausted", { rule: rule.name, subject: subject === "global" ? "global" : "user" });
+    }
+  }
+  return granted;
+}
+
+// A grant of Gemini calls from the daily AI budgets. `release` gives back
+// calls that were granted but not made, so the budget only counts calls
+// actually sent to Gemini.
+export type AiBudgetGrant = {
+  granted: number;
+  // "budget": a daily AI budget is used up until `resetsAt`.
+  // "unavailable": the shared budget counter couldn't be reached, so no
+  // calls are allowed (fails closed in production).
+  limitedBy: "budget" | "unavailable" | null;
+  resetsAt: string;
+  release: (unused: number) => Promise<void>;
+};
+
+// Asks for up to `wanted` Gemini calls on behalf of a user: both the
 // per-user and the deployment-wide daily budget must have room.
-export async function enforceAiBudget(userId: string, calls = 1): Promise<void> {
-  if (calls <= 0) return;
-  await enforceRateLimit(RATE_LIMITS.aiPerUser, userId, calls);
-  await enforceRateLimit(RATE_LIMITS.aiGlobal, "global", calls);
+export async function reserveAiCalls(userId: string, wanted: number): Promise<AiBudgetGrant> {
+  const now = Date.now();
+  const user = RATE_LIMITS.aiPerUser;
+  const global = RATE_LIMITS.aiGlobal;
+  const windowStart = now - (now % user.windowMs);
+  const resetsAt = windowResetsAt(user, now).toISOString();
+  const none = (limitedBy: AiBudgetGrant["limitedBy"]): AiBudgetGrant => ({
+    granted: 0,
+    limitedBy,
+    resetsAt,
+    release: async () => {},
+  });
+  if (wanted <= 0) return none(null);
+
+  const fromUser = await takeUpTo(user, userId, wanted, windowStart);
+  if (fromUser === null) {
+    logSecurityEvent("ai_budget_unavailable", { rule: user.name });
+    return none("unavailable");
+  }
+  if (fromUser === 0) return none("budget");
+
+  const fromGlobal = await takeUpTo(global, "global", fromUser, windowStart);
+  if (fromGlobal === null || fromGlobal < fromUser) {
+    await adjustCounter(user, userId, -(fromUser - (fromGlobal ?? 0)), windowStart);
+  }
+  if (fromGlobal === null) {
+    logSecurityEvent("ai_budget_unavailable", { rule: global.name });
+    return none("unavailable");
+  }
+  if (fromGlobal === 0) return none("budget");
+
+  const granted = fromGlobal;
+  let outstanding = granted;
+  return {
+    granted,
+    limitedBy: granted < wanted ? "budget" : null,
+    resetsAt,
+    release: async (unused: number) => {
+      const back = Math.min(Math.max(0, Math.floor(unused)), outstanding);
+      if (back === 0) return;
+      outstanding -= back;
+      await adjustCounter(user, userId, -back, windowStart);
+      await adjustCounter(global, "global", -back, windowStart);
+    },
+  };
 }

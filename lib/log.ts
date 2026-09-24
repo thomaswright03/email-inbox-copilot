@@ -52,7 +52,7 @@ export function logError(context: string, err: unknown): void {
 }
 
 // Events that page an operator (raiseAlert below), not just log.
-const ALERT_EVENTS = new Set(["ai_budget_unavailable", "rate_limited", "ssrf_blocked", "cross_site_request_blocked", "session_rejected", "ai_quota_exhausted"]);
+const ALERT_EVENTS = new Set(["ai_budget_unavailable", "ai_budget_exhausted", "rate_limited", "ssrf_blocked", "cross_site_request_blocked", "session_rejected", "ai_quota_exhausted"]);
 
 // Security-relevant events (rate-limit hits, blocked SSRF attempts, rejected
 // cross-site requests, invalid input) go out as one structured line each, so

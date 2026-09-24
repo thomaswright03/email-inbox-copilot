@@ -3,12 +3,16 @@ import type { RuleGroups } from "./rules";
 import type { SpamReason } from "./spam-reasons";
 
 // "generated": written by Gemini. "off": AI features are not enabled
-// (lib/ai.ts aiEnabled). "unavailable": AI is on but failed or is over its
-// daily budget, so the rule-based view is shown instead.
-export type AiStatus = "generated" | "off" | "unavailable";
+// (lib/ai.ts aiEnabled). "unavailable": AI is on but failed, so the
+// rule-based view is shown instead. "budget": AI is on but today's AI
+// budget is used up until `aiResetsAt` (lib/rate-limit.ts), so the
+// rule-based view is shown instead.
+export type AiStatus = "generated" | "off" | "unavailable" | "budget";
 
 export type TodayPayload = {
   aiStatus: AiStatus;
+  // When the daily AI budget resets (ISO time), with aiStatus "budget".
+  aiResetsAt?: string;
   summary: string | null;
   groups: RuleGroups | null;
   generatedAt: string;
@@ -35,7 +39,18 @@ export type SpamCardPayload = {
   unsubscribe: CardUnsubscribe;
 };
 
-export type SpamPayload = { aiStatus: AiStatus; generatedAt: string; flashcards: SpamCardPayload[] };
+export type SpamPayload = {
+  aiStatus: AiStatus;
+  generatedAt: string;
+  flashcards: SpamCardPayload[];
+  // Possible spam that Gemini hasn't checked yet: more than one load checks
+  // (lib/ai.ts MAX_CLASSIFY_PER_LOAD), or today's AI budget ran out. They
+  // are checked on a later load.
+  unchecked?: number;
+  // When the daily AI budget resets (ISO time), when the budget is why
+  // messages weren't checked (aiStatus "budget", or unchecked > 0).
+  aiResetsAt?: string;
+};
 
 export type ActionName = "delete" | "unsubscribe" | "ignore" | "undo_delete" | "undo_archive" | "undo_ignore";
 

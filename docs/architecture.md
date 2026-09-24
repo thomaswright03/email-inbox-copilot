@@ -34,11 +34,16 @@ card, confirm dialog and toast components beside it).
 4. **AI calls.** Only when `aiEnabled()` (both `GEMINI_API_KEY` and
    `GEMINI_PAID_TIER_PROJECT` set, i.e. the key is attested to be on Gemini's paid tier),
    `lib/ai.ts` calls Gemini (`gemini-3.5-flash-lite`): `summarizeToday` for the digest,
-   `classifySpam` for spam verdicts (only for messages that clear a cheap heuristic
-   pre-filter first, to cut down on model calls). Otherwise the routes use the rule-based
-   `lib/rules.ts` and send nothing to Gemini; each response carries `aiGenerated` so the
-   dashboard labels which kind it shows. If Gemini fails or the daily AI budget is used up,
-   the routes fall back to the same rule-based view with `aiStatus: "unavailable"`; only a
+   `classifyCandidates` for spam verdicts (only for messages that clear a cheap heuristic
+   pre-filter first, one call per email, at most 20 per load). Each email's verdict is
+   cached for 26 hours (`lib/verdict-cache.ts`), so it is checked once; candidates not
+   checked yet are counted in the response (`unchecked`) and checked on the next load.
+   Every call is first reserved from the daily AI budgets (`reserveAiCalls` in
+   `lib/rate-limit.ts`); calls not made are given back. Otherwise the routes use the
+   rule-based `lib/rules.ts` and send nothing to Gemini; each response carries `aiStatus` so
+   the dashboard labels which kind it shows. If Gemini fails the routes fall back to the same
+   rule-based view with `aiStatus: "unavailable"`; if the daily AI budget is used up, with
+   `aiStatus: "budget"` and `aiResetsAt`, so the dashboard can say when AI comes back. Only a
    Gmail failure produces an error. Each model call logs one `ai_usage` line (feature,
    model, tokens, latency, outcome). Both API routes cache their response per user+day for
    5 minutes, in memory (`lib/cache.ts`) and encrypted in Postgres (`lib/db-cache.ts`), to
@@ -70,6 +75,9 @@ card, confirm dialog and toast components beside it).
     **AES-256-GCM encrypted** with a key derived from `AUTH_SECRET`, keyed by
     `today|spam:<Google account id>:<date>`, 5-minute TTL. Expired rows are deleted on every
     write; a user's rows are deleted when they sign out, delete or unsubscribe.
+    Spam verdicts are stored the same way under `verdicts:<Google account id>:<model>`
+    (Gmail message id, spam yes/no and the fixed reason; no content) for 26 hours, so each
+    email is sent to Gemini once; kept across Refresh, deleted at sign-out.
   - `rate_limit`: per-user/global request counters (no content), pruned after two days.
   - `user_sessions`: Google account id → session version, used to revoke sessions.
   - `consent_records`: Google account id, `LEGAL_VERSION` and time of each acceptance.

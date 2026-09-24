@@ -74,6 +74,8 @@ export const fr: Messages = {
     "Les fonctions d'IA sont désactivées : le courrier du jour est trié par des règles simples au lieu d'être résumé. Vérifiez votre boîte de réception pour tout ce qui est important.",
   "summary.ai.unavailable":
     "Le résumé par IA n'est pas disponible pour le moment, voici donc une liste simple basée sur des règles. Vérifiez votre boîte de réception pour tout ce qui est important.",
+  "summary.ai.budget":
+    "Le quota d'IA du jour est épuisé : voici donc une liste simple basée sur des règles. Les résumés par IA reviennent à {time}. Vérifiez votre boîte de réception pour tout ce qui est important.",
   "summary.group.toCheck": "Messages à vérifier ({count})",
   "summary.group.bulk": "Probablement promotionnels ou envois groupés ({count})",
   "summary.allMessages": "Tous les messages ({count})",
@@ -86,6 +88,16 @@ export const fr: Messages = {
     "Signalés par des règles simples (l'IA est désactivée). Ce sont des suggestions qui peuvent être erronées : vérifiez chacune avant d'agir.",
   "spam.ai.unavailable":
     "La détection du spam par IA n'est pas disponible pour le moment : ces messages ont été signalés par des règles simples. Vérifiez chacun avant d'agir.",
+  "spam.ai.budget":
+    "Le quota d'IA du jour est épuisé : jusqu'à {time}, le spam est détecté par des règles simples. Ce sont des suggestions qui peuvent être erronées : vérifiez chacune avant d'agir.",
+  "spam.unchecked_one": "{count} autre e-mail suspect n'a pas encore été vérifié.",
+  "spam.unchecked_other": "{count} autres e-mails suspects n'ont pas encore été vérifiés.",
+  "spam.uncheckedBudget_one":
+    "{count} autre e-mail suspect sera vérifié par l'IA à {time}, quand le quota d'IA du jour sera renouvelé.",
+  "spam.uncheckedBudget_other":
+    "{count} autres e-mails suspects seront vérifiés par l'IA à {time}, quand le quota d'IA du jour sera renouvelé.",
+  "spam.checkMore": "Vérifier maintenant",
+  "spam.checking": "Vérification…",
   "spam.empty": "Aucun spam suspecté dans votre boîte de réception ces dernières 24 heures.",
   "spam.reason.marketing": "Ressemble à du marketing ou à une promotion",
   "spam.reason.newsletter": "Ressemble à une newsletter ou à un envoi groupé",

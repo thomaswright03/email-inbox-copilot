@@ -180,4 +180,15 @@ describe("GET /api/emails/today", () => {
     expect(summarizeToday).not.toHaveBeenCalled();
     expect(body).toMatchObject({ count: 0, summary: null });
   });
+
+  it("with the default AI budget, 10 uncached loads for one user in a day all get an AI summary", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-10loads@example.com"));
+    vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
+    vi.mocked(summarizeToday).mockResolvedValue("**Summary**");
+    for (let load = 0; load < 10; load++) {
+      const body = await (await GET(getRequest("?refresh=1"))).json();
+      expect(body).toMatchObject({ aiStatus: "generated", summary: "**Summary**" });
+    }
+    expect(summarizeToday).toHaveBeenCalledTimes(10);
+  });
 });

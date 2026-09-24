@@ -3,7 +3,7 @@
 // whenever the substance of either document changes so users are asked
 // to re-agree.
 
-export const LEGAL_VERSION = "2026-09-24.3";
+export const LEGAL_VERSION = "2026-09-24.4";
 export const LEGAL_LAST_UPDATED = "September 24, 2026";
 export const CONTACT_EMAIL = "t@thomasewright.com";
 export const COMPANY_NAME = "Wright AI Solutions LLC";
@@ -71,6 +71,7 @@ Everything below is held in one database, hosted by Neon in the United States, o
 | Data | Where | Kept for |
 |---|---|---|
 | Your recent messages' sender, subject, preview snippet and date, and your summary or spam list | Database cache, encrypted (AES-256-GCM) | 5 minutes, so reloading the page doesn't re-read your mailbox; deleted immediately when you sign out |
+| When AI features are on, the AI spam check result for each recent message: the Gmail message id, whether it looked like spam, and the fixed reason shown on its card | Database cache, encrypted (AES-256-GCM) | 26 hours, so each message is sent to Gemini only once; deleted immediately when you sign out |
 | Your Google account id, name, email address, profile picture link, and Google access and refresh tokens | An encrypted cookie in your browser, not our database | Until you sign out, or 12 hours after you last used the Service |
 | Your Google account id and a session number | Database (sessions table) | 30 days after your last sign-in; it lets us end all your sessions at once |
 | Record of your agreement: Google account id, the version of these documents you agreed to, and when | Database (consent records) | 3 years from when you agreed, so we can show what you agreed to |

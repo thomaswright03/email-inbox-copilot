@@ -194,6 +194,15 @@ describe("Dashboard", () => {
       expect(screen.getByText("All messages (2)")).toBeTruthy();
     });
 
+    it("says when today's AI budget is used up and when AI summaries come back", async () => {
+      const resetsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      mockApi({ today: () => json(today({ aiStatus: "budget", aiResetsAt: resetsAt })) });
+      renderDashboard();
+      const caption = await screen.findByText(/Today's AI allowance is used up/);
+      const time = new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(new Date(resetsAt));
+      expect(caption.textContent).toContain(`AI summaries come back at ${time}`);
+    });
+
     it("tells the user when the AI summary failed and a rule-based list is shown instead", async () => {
       mockApi({ today: () => json(today({ aiStatus: "unavailable" })) });
       renderDashboard();
@@ -290,9 +299,44 @@ describe("Dashboard", () => {
       renderDashboard();
       fireEvent.click(screen.getByRole("tab", { name: /Spam Flashcards/ }));
       expect(screen.getByRole("tabpanel").querySelector('[aria-busy="true"]')).not.toBeNull();
-      await act(async () => resolve(json(spam([], "off"))));
+      await act(async () => resolve(json(spam([], "generated"))));
       expect(await screen.findByText("No suspected spam in your inbox from the last 24 hours.")).toBeTruthy();
+      // The "Flagged by…" caption describes cards, so it isn't shown without any.
+      expect(screen.queryByText(/Flagged by/)).toBeNull();
+    });
+
+    it("labels rule-based cards when AI is off", async () => {
+      mockApi({ spam: () => json(spam([ONE_CLICK], "off")) });
+      renderDashboard();
+      await openSpamTab();
       expect(screen.getByText(/Flagged by simple rules \(AI is off\)/)).toBeTruthy();
+    });
+
+    it("says how many possible spam emails AI hasn't checked yet, and checks them on request", async () => {
+      mockApi({ spam: (_init, url) => json({ ...spam([ONE_CLICK]), ...(url?.includes("refresh=1") ? {} : { unchecked: 5 }) }) });
+      renderDashboard();
+      await openSpamTab();
+      expect(screen.getByText("5 more possible spam emails haven't been checked yet.")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Check now" }));
+      await waitFor(() => expect(screen.queryByText(/haven't been checked yet/)).toBeNull());
+      expect(fetchMock.mock.calls.map(([u]) => String(u))).toContain("/api/emails/spam?refresh=1");
+    });
+
+    it("when today's AI budget is used up, says so and when it comes back", async () => {
+      const resetsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      mockApi({ spam: () => json({ ...spam([ONE_CLICK]), unchecked: 2, aiResetsAt: resetsAt }) });
+      renderDashboard();
+      await openSpamTab();
+      const notice = screen.getByText(/2 more possible spam emails will be checked by AI at .+, when today's AI allowance resets\./);
+      expect(notice.textContent).not.toMatch(/\{time\}/);
+      expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
+    });
+
+    it("shows the budget message on an empty rule-based list too", async () => {
+      mockApi({ spam: () => json({ ...spam([], "budget"), aiResetsAt: new Date().toISOString() }) });
+      renderDashboard();
+      fireEvent.click(screen.getByRole("tab", { name: /Spam Flashcards/ }));
+      expect(await screen.findByText(/Today's AI allowance is used up, so simple rules are checking for spam until/)).toBeTruthy();
     });
 
     it("shows a plain error with a retry when the spam list can't load", async () => {
