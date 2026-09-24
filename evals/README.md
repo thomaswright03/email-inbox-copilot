@@ -57,7 +57,7 @@ model clears it comfortably.
   runs `npm run eval` on every pull request or push to `main` that touches
   `lib/ai-prompts.ts` or `evals/`, and every Monday, and fails when a score is below its
   threshold. It needs the repository secrets `GEMINI_API_KEY` and `GEMINI_PAID_TIER_PROJECT`
-  (paid tier); without them the job fails and says so.
+  (paid tier); without them the job is skipped with a warning, so no model score has been checked.
 - When Google announces a replacement for the pinned model id: run it against the new id
   first and switch only if it passes.
 
