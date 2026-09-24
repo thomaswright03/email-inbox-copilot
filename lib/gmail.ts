@@ -179,15 +179,24 @@ export async function fetchRecentMessages(accessToken: string): Promise<InboxWin
 
   const wanted = ids.slice(0, MAX_MESSAGES);
   // metadata-only: this app never reads message bodies, so we never
-  // request them from Gmail in the first place.
+  // request them from Gmail in the first place. A message deleted between
+  // the list and its read is simply left out.
   const messages = await mapConcurrent(wanted, GET_CONCURRENCY, (id) =>
     gmailRead(
       (options) => gmail.users.messages.get({ userId: "me", id, format: "metadata", metadataHeaders: METADATA_HEADERS }, options),
       deadline
-    ).then((res) => res.data)
+    ).then(
+      (res) => res.data,
+      (err) => {
+        if (err instanceof GmailNotFoundError) return null;
+        throw err;
+      }
+    )
   );
 
-  const emails = messages.filter((m) => isReceived(m.labelIds ?? [])).map(parseMessage);
+  const emails = messages
+    .filter((m): m is gmail_v1.Schema$Message => m !== null && isReceived(m.labelIds ?? []))
+    .map(parseMessage);
   return { emails, truncated, totalEstimate: Math.max(totalEstimate, emails.length) };
 }
 

@@ -112,6 +112,16 @@ describe("fetchRecentMessages", () => {
     expect(result.emails[0].isInInbox).toBe(false);
   });
 
+  it("leaves out a message deleted between the list and its read, instead of failing the load", async () => {
+    api.list.mockResolvedValue({ data: { messages: ids("m", 3), resultSizeEstimate: 3 } });
+    api.get.mockImplementation(async ({ id }: { id: string }) => {
+      if (id === "m1") throw httpError(404, "Requested entity was not found.");
+      return metadata(id);
+    });
+    const result = await fetchRecentMessages("tok");
+    expect(result.emails.map((e) => e.id)).toEqual(["m0", "m2"]);
+  });
+
   it("follows nextPageToken until every message in the window is read", async () => {
     api.list
       .mockResolvedValueOnce({ data: { messages: ids("a", 40), nextPageToken: "p2", resultSizeEstimate: 70 } })
