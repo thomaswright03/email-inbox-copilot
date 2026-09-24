@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { signIn } from "next-auth/react";
 import { useI18n } from "../I18nProvider";
@@ -30,6 +31,25 @@ export function SkeletonCards() {
         </div>
       ))}
     </div>
+  );
+}
+
+// After a few seconds of loading, says so, so a slow load doesn't look
+// frozen. Mounted only while loading; a load that never answers ends in an
+// error after FETCH_TIMEOUT_MS (lib/client-fetch.ts).
+export const SLOW_AFTER_MS = 5_000;
+
+export function SlowNotice() {
+  const { t } = useI18n();
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), SLOW_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <p role="status" className="mt-3 text-sm text-muted">
+      {slow ? t("errors.slow") : ""}
+    </p>
   );
 }
 

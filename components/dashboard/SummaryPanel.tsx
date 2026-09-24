@@ -7,7 +7,7 @@ import { gmailThreadUrl } from "@/lib/gmail-links";
 import { parseSender } from "@/lib/sender";
 import type { TodayPayload } from "@/lib/payloads";
 import { useI18n } from "../I18nProvider";
-import { ErrorState, SkeletonLines } from "./States";
+import { ErrorState, SkeletonLines, SlowNotice } from "./States";
 import { errorMessageKey } from "./errors";
 import { formatResetTime } from "./format";
 import type { LoadState } from "./useInbox";
@@ -142,6 +142,9 @@ export default function SummaryPanel({
           </div>
         )}
       </div>
+
+      {/* Outside the aria-busy box, so it is announced while loading. */}
+      {!data && <SlowNotice />}
 
       {data && data.count > 0 && (
         <>

@@ -1,6 +1,7 @@
 import { google, gmail_v1 } from "googleapis";
 import { toSafeError } from "./log";
 import { withRetry } from "./retry";
+import { deadlineSignal, withTimeout } from "./timeout";
 
 export type ParsedEmail = {
   id: string;
@@ -53,20 +54,32 @@ export function isGmailAuthError(err: unknown): boolean {
   return safe.status === 403 && /insufficient|permission|scope|unauthori[sz]ed|invalid credentials|disabled/i.test(safe.message);
 }
 
-// Reads are retried on transient errors; an auth failure becomes a
-// GmailAuthError so the caller can offer "Reconnect Gmail".
-async function gmailRead<T>(fn: () => Promise<T>): Promise<T> {
+// Every Gmail call is bounded: one request may take GMAIL_CALL_TIMEOUT_MS,
+// and reading the whole 24-hour window GMAIL_READ_DEADLINE_MS, so a hung
+// Gmail becomes "Couldn't reach Gmail" well before the dashboard gives up
+// waiting (lib/client-fetch.ts).
+export const GMAIL_CALL_TIMEOUT_MS = 6_000;
+export const GMAIL_READ_DEADLINE_MS = 8_000;
+
+type GmailCall<T> = (options: { signal: AbortSignal }) => Promise<T>;
+
+// Reads are retried on transient errors (timeouts included, within the
+// retry budget); an auth failure becomes a GmailAuthError so the caller can
+// offer "Reconnect Gmail".
+async function gmailRead<T>(fn: GmailCall<T>, deadline?: AbortSignal): Promise<T> {
   try {
-    return await withRetry(fn);
+    return await withRetry(() => withTimeout((signal) => fn({ signal }), GMAIL_CALL_TIMEOUT_MS, deadline));
   } catch (err) {
     if (isGmailAuthError(err)) throw new GmailAuthError();
     throw err;
   }
 }
 
-async function gmailWrite<T>(fn: () => Promise<T>): Promise<T> {
+// Changes are never retried (repeating one could act twice), but they are
+// bounded by the same per-call timeout.
+async function gmailWrite<T>(fn: GmailCall<T>): Promise<T> {
   try {
-    return await fn();
+    return await withTimeout((signal) => fn({ signal }), GMAIL_CALL_TIMEOUT_MS);
   } catch (err) {
     if (isGmailAuthError(err)) throw new GmailAuthError();
     throw err;
@@ -130,14 +143,16 @@ async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => P
 
 export async function fetchRecentMessages(accessToken: string): Promise<InboxWindow> {
   const gmail = getGmailClient(accessToken);
+  const deadline = deadlineSignal(GMAIL_READ_DEADLINE_MS);
 
   const ids: string[] = [];
   let pageToken: string | undefined;
   let totalEstimate = 0;
   let truncated = false;
   do {
-    const list = await gmailRead(() =>
-      gmail.users.messages.list({ userId: "me", q: RECENT_MAIL_QUERY, maxResults: PAGE_SIZE, pageToken })
+    const list = await gmailRead(
+      (options) => gmail.users.messages.list({ userId: "me", q: RECENT_MAIL_QUERY, maxResults: PAGE_SIZE, pageToken }, options),
+      deadline
     );
     totalEstimate = Math.max(totalEstimate, list.data.resultSizeEstimate ?? 0);
     for (const m of list.data.messages ?? []) if (m.id) ids.push(m.id);
@@ -152,8 +167,9 @@ export async function fetchRecentMessages(accessToken: string): Promise<InboxWin
   // metadata-only: this app never reads message bodies, so we never
   // request them from Gmail in the first place.
   const messages = await mapConcurrent(wanted, GET_CONCURRENCY, (id) =>
-    gmailRead(() =>
-      gmail.users.messages.get({ userId: "me", id, format: "metadata", metadataHeaders: METADATA_HEADERS })
+    gmailRead(
+      (options) => gmail.users.messages.get({ userId: "me", id, format: "metadata", metadataHeaders: METADATA_HEADERS }, options),
+      deadline
     ).then((res) => res.data)
   );
 
@@ -165,13 +181,11 @@ export type UnsubscribeHeaders = { listUnsubscribe: string | null; listUnsubscri
 
 export async function getUnsubscribeHeaders(accessToken: string, messageId: string): Promise<UnsubscribeHeaders> {
   const gmail = getGmailClient(accessToken);
-  const msg = await gmailRead(() =>
-    gmail.users.messages.get({
-      userId: "me",
-      id: messageId,
-      format: "metadata",
-      metadataHeaders: ["List-Unsubscribe", "List-Unsubscribe-Post"],
-    })
+  const msg = await gmailRead((options) =>
+    gmail.users.messages.get(
+      { userId: "me", id: messageId, format: "metadata", metadataHeaders: ["List-Unsubscribe", "List-Unsubscribe-Post"] },
+      options
+    )
   );
   const headers = msg.data.payload?.headers;
   return {
@@ -182,26 +196,26 @@ export async function getUnsubscribeHeaders(accessToken: string, messageId: stri
 
 export async function trashMessage(accessToken: string, messageId: string): Promise<void> {
   const gmail = getGmailClient(accessToken);
-  await gmailWrite(() => gmail.users.messages.trash({ userId: "me", id: messageId }));
+  await gmailWrite((options) => gmail.users.messages.trash({ userId: "me", id: messageId }, options));
 }
 
 // Undo for Delete.
 export async function untrashMessage(accessToken: string, messageId: string): Promise<void> {
   const gmail = getGmailClient(accessToken);
-  await gmailWrite(() => gmail.users.messages.untrash({ userId: "me", id: messageId }));
+  await gmailWrite((options) => gmail.users.messages.untrash({ userId: "me", id: messageId }, options));
 }
 
 export async function archiveMessage(accessToken: string, messageId: string): Promise<void> {
   const gmail = getGmailClient(accessToken);
-  await gmailWrite(() =>
-    gmail.users.messages.modify({ userId: "me", id: messageId, requestBody: { removeLabelIds: ["INBOX"] } })
+  await gmailWrite((options) =>
+    gmail.users.messages.modify({ userId: "me", id: messageId, requestBody: { removeLabelIds: ["INBOX"] } }, options)
   );
 }
 
 // Undo for the archive step of Unsubscribe (the unsubscribe itself can't be undone).
 export async function unarchiveMessage(accessToken: string, messageId: string): Promise<void> {
   const gmail = getGmailClient(accessToken);
-  await gmailWrite(() =>
-    gmail.users.messages.modify({ userId: "me", id: messageId, requestBody: { addLabelIds: ["INBOX"] } })
+  await gmailWrite((options) =>
+    gmail.users.messages.modify({ userId: "me", id: messageId, requestBody: { addLabelIds: ["INBOX"] } }, options)
   );
 }

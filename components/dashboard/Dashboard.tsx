@@ -15,7 +15,7 @@ import SummaryPanel from "./SummaryPanel";
 import SpamCard, { type CardNotice } from "./SpamCard";
 import ConfirmDialog from "./ConfirmDialog";
 import Toast, { type ToastState } from "./Toast";
-import { ErrorState, SkeletonCards } from "./States";
+import { ErrorState, SkeletonCards, SlowNotice } from "./States";
 import { errorMessageKey } from "./errors";
 import { formatResetTime } from "./format";
 import { useInbox } from "./useInbox";
@@ -191,9 +191,12 @@ export default function Dashboard({
               onRetry={inbox.retrySpam}
             />
           ) : inbox.spam.status === "loading" ? (
-            <div aria-busy="true">
-              <SkeletonCards />
-            </div>
+            <>
+              <div aria-busy="true">
+                <SkeletonCards />
+              </div>
+              <SlowNotice />
+            </>
           ) : (
             <div>
               {/* The source caption describes the cards, so it is left out

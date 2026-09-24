@@ -134,6 +134,8 @@ export const en = {
   "errors.spamLoad": "Inbox Buddy couldn't check for spam. Try again in a moment.",
   "errors.action": "That didn't work. Try again in a moment.",
   "errors.network": "Couldn't reach Inbox Buddy. Check your connection and try again.",
+  "errors.timeout": "Inbox Buddy is taking too long to answer. Check your connection and try again.",
+  "errors.slow": "This is taking longer than usual…",
   "errors.gmail_reconnect": "Inbox Buddy has lost access to your Gmail. Reconnect to continue.",
   "errors.gmail_unavailable": "Couldn't reach Gmail right now. Try again in a moment.",
   "errors.rate_limited": "You're doing that too often. Try again shortly.",

@@ -5,6 +5,7 @@ import type { MessageKey } from "@/lib/i18n";
 // back to the context's generic message.
 const SPECIFIC: Record<string, MessageKey> = {
   network: "errors.network",
+  timeout: "errors.timeout",
   gmail_reconnect: "errors.gmail_reconnect",
   gmail_unavailable: "errors.gmail_unavailable",
   rate_limited: "errors.rate_limited",

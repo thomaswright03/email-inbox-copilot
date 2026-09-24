@@ -142,6 +142,8 @@ export const es: Messages = {
   "errors.spamLoad": "Inbox Buddy no pudo revisar el spam. Inténtalo de nuevo en un momento.",
   "errors.action": "No funcionó. Inténtalo de nuevo en un momento.",
   "errors.network": "No se pudo conectar con Inbox Buddy. Revisa tu conexión e inténtalo de nuevo.",
+  "errors.timeout": "Inbox Buddy está tardando demasiado en responder. Revisa tu conexión e inténtalo de nuevo.",
+  "errors.slow": "Esto está tardando más de lo habitual…",
   "errors.gmail_reconnect": "Inbox Buddy perdió el acceso a tu Gmail. Vuelve a conectarlo para continuar.",
   "errors.gmail_unavailable": "No se pudo conectar con Gmail en este momento. Inténtalo de nuevo en un momento.",
   "errors.rate_limited": "Lo estás haciendo con demasiada frecuencia. Inténtalo de nuevo en breve.",

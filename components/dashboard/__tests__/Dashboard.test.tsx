@@ -242,6 +242,25 @@ describe("Dashboard", () => {
       expect(await screen.findByText("2 messages in the last 24 hours")).toBeTruthy();
     });
 
+    it("says a slow load is taking longer than usual, then stops waiting and offers Try again", async () => {
+      vi.useFakeTimers();
+      let calls = 0;
+      mockApi({ today: () => (++calls === 1 ? new Promise<Response>(() => {}) : json(today())) });
+      renderDashboard();
+      expect(screen.queryByText("This is taking longer than usual…")).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(screen.getByText("This is taking longer than usual…")).toBeTruthy();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      expect(screen.getByText("Inbox Buddy is taking too long to answer. Check your connection and try again.")).toBeTruthy();
+      vi.useRealTimers();
+      fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+      expect(await screen.findByText("2 messages in the last 24 hours")).toBeTruthy();
+    });
+
     it("offers Reconnect Gmail when Gmail access was revoked", async () => {
       mockApi({ today: () => json({ ok: false, code: "gmail_reconnect", error: "x" }, 403) });
       renderDashboard();

@@ -4,6 +4,7 @@ import type { ParsedEmail } from "./gmail";
 import { SPAM_REASONS, type SpamReason } from "./spam-reasons";
 import { emit, toSafeError } from "./log";
 import { withRetry } from "./retry";
+import { withTimeout } from "./timeout";
 
 // "gemini-3.5-flash-lite" is Google's stable model id for this model (not a
 // "-latest" alias): Google keeps it pointing at the same model and announces
@@ -59,13 +60,24 @@ export function logAiUsage(fields: {
   emit("info", { level: "ai_usage", model: MODEL, ...fields });
 }
 
+// How long one Gemini call may take, retries included: a timed-out call is
+// treated like any transient error and retried only while the budget
+// allows. A summary reads up to 100 emails; a spam check reads one.
+export const GEMINI_TIMEOUT_MS: Record<AiFeature, number> = { summary: 10_000, spam: 5_000 };
+
 const geminiGenerate: Generate = async (prompt, config, feature) => {
   if (!aiEnabled()) throw new AiDisabledError();
   const started = Date.now();
+  const timeoutMs = GEMINI_TIMEOUT_MS[feature];
   try {
-    const response = await withRetry(() => gemini().models.generateContent({ model: MODEL, contents: prompt, config }), {
-      budgetMs: 15_000,
-    });
+    const response = await withRetry(
+      () =>
+        withTimeout(
+          (abortSignal) => gemini().models.generateContent({ model: MODEL, contents: prompt, config: { ...config, abortSignal } }),
+          timeoutMs
+        ),
+      { budgetMs: timeoutMs }
+    );
     const text = response.text;
     logAiUsage({
       feature,

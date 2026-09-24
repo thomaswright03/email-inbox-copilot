@@ -31,6 +31,11 @@ card, confirm dialog and toast components beside it).
    more) and fetches metadata only (`format: "metadata"`, no message bodies) for each one.
    Reads are retried with backoff on 429/5xx and timeouts (`lib/retry.ts`); a 401/403 from
    Gmail becomes `gmail_reconnect`, which the dashboard shows as "Reconnect Gmail".
+   Nothing waits forever (`lib/timeout.ts`): each Gmail request has a 6 s timeout and the
+   whole read an 8 s deadline (then "Couldn't reach Gmail"); a Gemini call has 10 s for the
+   summary and 5 s per spam check (then the rule-based view). The dashboard's own requests
+   (`lib/client-fetch.ts`) give up after 20 s with "taking too long" and Try again, and a
+   load that is still running after 5 s says it is taking longer than usual.
 4. **AI calls.** Only when `aiEnabled()` (both `GEMINI_API_KEY` and
    `GEMINI_PAID_TIER_PROJECT` set, i.e. the key is attested to be on Gemini's paid tier),
    `lib/ai.ts` calls Gemini (`gemini-3.5-flash-lite`): `summarizeToday` for the digest,

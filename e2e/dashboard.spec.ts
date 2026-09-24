@@ -123,6 +123,21 @@ test.describe("dashboard", () => {
     await expect(page.getByRole("article")).toHaveCount(2);
   });
 
+  test("a load that never answers says it is slow, then offers Try again instead of spinning forever", async ({ page, context }) => {
+    test.setTimeout(60_000);
+    await signInAs(context);
+    await page.route("**/api/emails/today**", () => {
+      // Never answered.
+    });
+    await page.goto("/");
+    await expect(page.getByText("This is taking longer than usual…")).toBeVisible({ timeout: 10_000 });
+    const alert = page.getByRole("alert").filter({ hasText: "Inbox Buddy is taking too long to answer" });
+    await expect(alert).toBeVisible({ timeout: 25_000 });
+    await page.unroute("**/api/emails/today**");
+    await alert.getByRole("button", { name: "Try again" }).click();
+    await expect(page.getByText("3 messages in the last 24 hours")).toBeVisible();
+  });
+
   for (const [name, fail] of [
     ["the connection drops", (route: import("@playwright/test").Route) => route.abort("internetdisconnected")],
     [

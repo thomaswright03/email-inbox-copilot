@@ -25,6 +25,7 @@ import {
   archiveMessage,
   fetchRecentMessages,
   getUnsubscribeHeaders,
+  GMAIL_CALL_TIMEOUT_MS,
   GmailAuthError,
   isGmailAuthError,
   MAX_MESSAGES,
@@ -66,7 +67,8 @@ describe("fetchRecentMessages", () => {
     const result = await fetchRecentMessages("tok");
 
     expect(api.list).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "me", q: "newer_than:1d -in:sent -in:drafts -in:chats" })
+      expect.objectContaining({ userId: "me", q: "newer_than:1d -in:sent -in:drafts -in:chats" }),
+      { signal: expect.any(AbortSignal) }
     );
     for (const [args] of api.get.mock.calls) {
       expect(args.format).toBe("metadata");
@@ -199,10 +201,25 @@ describe("single-message calls", () => {
     await untrashMessage("tok", "m1");
     await archiveMessage("tok", "m1");
     await unarchiveMessage("tok", "m1");
-    expect(api.trash).toHaveBeenCalledWith({ userId: "me", id: "m1" });
-    expect(api.untrash).toHaveBeenCalledWith({ userId: "me", id: "m1" });
-    expect(api.modify).toHaveBeenNthCalledWith(1, { userId: "me", id: "m1", requestBody: { removeLabelIds: ["INBOX"] } });
-    expect(api.modify).toHaveBeenNthCalledWith(2, { userId: "me", id: "m1", requestBody: { addLabelIds: ["INBOX"] } });
+    const bounded = { signal: expect.any(AbortSignal) };
+    expect(api.trash).toHaveBeenCalledWith({ userId: "me", id: "m1" }, bounded);
+    expect(api.untrash).toHaveBeenCalledWith({ userId: "me", id: "m1" }, bounded);
+    expect(api.modify).toHaveBeenNthCalledWith(1, { userId: "me", id: "m1", requestBody: { removeLabelIds: ["INBOX"] } }, bounded);
+    expect(api.modify).toHaveBeenNthCalledWith(2, { userId: "me", id: "m1", requestBody: { addLabelIds: ["INBOX"] } }, bounded);
+  });
+
+  it("a change Gmail never answers fails after the per-call timeout, without a retry", async () => {
+    vi.useFakeTimers();
+    try {
+      api.trash.mockImplementation(() => new Promise(() => {}));
+      const pending = trashMessage("tok", "m1");
+      const assertion = expect(pending).rejects.toThrow(/Timed out/);
+      await vi.advanceTimersByTimeAsync(GMAIL_CALL_TIMEOUT_MS);
+      await assertion;
+      expect(api.trash).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("changes are never retried, and an auth failure asks for reconnect", async () => {
