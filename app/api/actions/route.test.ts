@@ -47,7 +47,7 @@ describe("POST /api/actions", () => {
 
     expect(body.ok).toBe(true);
     expect(trashMessage).toHaveBeenCalledWith("tok", "m1");
-    expect(logAuditEvent).toHaveBeenCalledWith({ userEmail: "a@example.com", action: "delete", messageId: "m1" });
+    expect(logAuditEvent).toHaveBeenCalledWith({ userId: "gid-a@example.com", action: "delete", messageId: "m1" });
   });
 
   it("delete: returns 502 and does not log success when Gmail trash fails", async () => {
@@ -69,7 +69,7 @@ describe("POST /api/actions", () => {
     expect(body.ok).toBe(true);
     expect(trashMessage).not.toHaveBeenCalled();
     expect(archiveMessage).not.toHaveBeenCalled();
-    expect(logAuditEvent).toHaveBeenCalledWith({ userEmail: "a@example.com", action: "ignore", messageId: "m1" });
+    expect(logAuditEvent).toHaveBeenCalledWith({ userId: "gid-a@example.com", action: "ignore", messageId: "m1" });
   });
 
   it("unsubscribe: no List-Unsubscribe header -> 400, logged as failed", async () => {
@@ -195,5 +195,25 @@ describe("POST /api/actions", () => {
     });
     expect((await POST(req)).status).toBe(415);
     expect(trashMessage).not.toHaveBeenCalled();
+  });
+
+  it("stops reading a chunked body without Content-Length once it passes 1 KB", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("v@example.com"));
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(new Uint8Array(512).fill(32));
+        if (pulled > 1000) controller.close();
+      },
+    });
+    const req = new Request("http://localhost/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: "http://localhost" },
+      body,
+      duplex: "half",
+    } as RequestInit);
+    expect((await POST(req)).status).toBe(413);
+    expect(pulled).toBeLessThan(10);
   });
 });

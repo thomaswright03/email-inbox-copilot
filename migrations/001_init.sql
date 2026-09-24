@@ -3,16 +3,34 @@
 -- app connects with a separate least-privilege role (see SECURITY.md) that
 -- can't create, alter or drop anything.
 
+-- user_id is the Google account id (never the email address); detail only
+-- holds fixed strings written by the app, never model output.
 CREATE TABLE IF NOT EXISTS audit_log (
   id BIGSERIAL PRIMARY KEY,
-  user_email TEXT NOT NULL,
+  user_id TEXT,
   action TEXT NOT NULL,
   message_id TEXT,
   detail TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Databases created by earlier versions of the app (which created this table
+-- at runtime with a user_email column) are brought to the same shape, and
+-- the model-written reasons they stored are removed.
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS user_id TEXT;
+
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'audit_log' AND column_name = 'user_email') THEN ALTER TABLE audit_log ALTER COLUMN user_email DROP NOT NULL; END IF; END $$;
+
+UPDATE audit_log SET detail = NULL WHERE action = 'classified_spam';
+
 CREATE INDEX IF NOT EXISTS audit_log_created_at_idx ON audit_log (created_at);
+
+-- Retention. The app's role has no DELETE on audit_log; this function (run
+-- with the owner's rights) is the only way it can remove rows, and it can
+-- only remove rows older than the retention period (minimum 30 days).
+CREATE OR REPLACE FUNCTION purge_audit_log(retention_days integer) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$ DELETE FROM audit_log WHERE created_at < now() - make_interval(days => GREATEST(retention_days, 30)) $$;
+
+REVOKE ALL ON FUNCTION purge_audit_log(integer) FROM PUBLIC;
 
 -- Encrypted (AES-256-GCM) inbox-derived cache values, see lib/db-cache.ts.
 CREATE TABLE IF NOT EXISTS response_cache (

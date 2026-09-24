@@ -39,8 +39,7 @@ for (const [address, prefix] of IPV4_BLOCKED_CIDRS) {
 }
 
 const IPV6_BLOCKED_CIDRS: [string, number][] = [
-  ["::", 128], // unspecified
-  ["::1", 128], // loopback
+  ["::", 96], // unspecified, loopback and IPv4-compatible (::a.b.c.d / ::7f00:1)
   ["64:ff9b::", 96], // NAT64 (embeds IPv4)
   ["64:ff9b:1::", 48], // local-use NAT64
   ["100::", 64], // discard

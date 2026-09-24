@@ -92,6 +92,7 @@ describe("isBlockedAddress: IPv6 ranges that embed or tunnel IPv4", () => {
     "::ffff:7f00:1", // hex form of ::ffff:127.0.0.1
     "::ffff:a9fe:a9fe", // hex form of ::ffff:169.254.169.254
     "::127.0.0.1", // IPv4-compatible
+    "::7f00:1", // hex form of the IPv4-compatible loopback
     "64:ff9b::a9fe:a9fe", // NAT64
     "2002:7f00:1::", // 6to4
     "2001:0:4136:e378::1", // Teredo
@@ -112,6 +113,7 @@ describe("toSafeUrl: literals and credentials", () => {
     expect(await toSafeUrl("http://169.254.169.254/latest/meta-data/")).toBeNull();
     expect(await toSafeUrl("http://[::1]/")).toBeNull();
     expect(await toSafeUrl("http://[::ffff:7f00:1]/")).toBeNull();
+    expect(await toSafeUrl("http://[::127.0.0.1]/")).toBeNull();
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });

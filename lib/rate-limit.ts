@@ -6,7 +6,11 @@ import { logError, logSecurityEvent } from "./log";
 // without it (or if the database errors) each instance falls back to its own
 // in-memory counters, which still bounds a single instance.
 
-export type RateLimitRule = { name: string; limit: number; windowMs: number };
+// requireShared: in production the rule is only enforced from the shared
+// Postgres counter; if that can't be reached the request is refused rather
+// than counted per instance (used for the Gemini spend budgets, where a
+// per-instance count would multiply the cap by the number of instances).
+export type RateLimitRule = { name: string; limit: number; windowMs: number; requireShared?: boolean };
 
 function envInt(name: string, fallback: number): number {
   const parsed = Number.parseInt(process.env[name] ?? "", 10);
@@ -22,8 +26,8 @@ export const RATE_LIMITS = {
   actions: { name: "actions", limit: envInt("RATE_LIMIT_ACTIONS_PER_MINUTE", 30), windowMs: MINUTE },
   // Gemini calls are only made on a cache miss; these cap what one account,
   // and the whole deployment, can spend in a day.
-  aiPerUser: { name: "ai-user", limit: envInt("AI_CALLS_PER_USER_PER_DAY", 60), windowMs: DAY },
-  aiGlobal: { name: "ai-global", limit: envInt("AI_CALLS_GLOBAL_PER_DAY", 400), windowMs: DAY },
+  aiPerUser: { name: "ai-user", limit: envInt("AI_CALLS_PER_USER_PER_DAY", 60), windowMs: DAY, requireShared: true },
+  aiGlobal: { name: "ai-global", limit: envInt("AI_CALLS_GLOBAL_PER_DAY", 400), windowMs: DAY, requireShared: true },
 } satisfies Record<string, RateLimitRule>;
 
 export type RateLimitResult = { allowed: boolean; retryAfterSeconds: number };
@@ -73,6 +77,12 @@ export async function consumeRateLimit(rule: RateLimitRule, subject: string, cos
   const bucket = `${rule.name}:${subject}`;
   const retryAfterSeconds = Math.max(1, Math.ceil((windowStart + rule.windowMs - now) / 1000));
 
+  const sharedOnly = rule.requireShared === true && process.env.NODE_ENV === "production";
+  const refuse = (): RateLimitResult => {
+    logSecurityEvent("ai_budget_unavailable", { rule: rule.name });
+    return { allowed: false, retryAfterSeconds: 60 };
+  };
+
   let count: number;
   const sql = getSql();
   if (sql) {
@@ -80,9 +90,11 @@ export async function consumeRateLimit(rule: RateLimitRule, subject: string, cos
       count = await hitDb(sql, bucket, windowStart, cost);
     } catch (err) {
       logError("rate-limit.db", err);
+      if (sharedOnly) return refuse();
       count = hitMemory(bucket, windowStart, cost);
     }
   } else {
+    if (sharedOnly) return refuse();
     count = hitMemory(bucket, windowStart, cost);
   }
 

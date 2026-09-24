@@ -25,8 +25,12 @@ describe("stripLinksAndImages", () => {
     expect(out).toBe("See pixel and your bank");
   });
 
-  it("removes raw HTML tags", () => {
-    expect(stripLinksAndImages('hi <img src="https://evil.example/x">there')).toBe("hi there");
+  it("removes every angle bracket, so no HTML element (whole, partial or nested) survives", () => {
+    for (const input of ['hi <img src="https://evil.example/x">there', "<<script>script>alert(1)<</script>/script>", "<scr<b>ipt>"]) {
+      const out = stripLinksAndImages(input);
+      expect(out).not.toContain("<");
+      expect(out).not.toContain(">");
+    }
   });
 });
 

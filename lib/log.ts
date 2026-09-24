@@ -1,5 +1,3 @@
-import { raiseAlert } from "./alert";
-
 // Server-side logging helpers that never write secrets to logs.
 //
 // googleapis/gaxios errors carry the full request config, including the
@@ -40,12 +38,21 @@ export function toSafeError(err: unknown): SafeError {
   return { name: "NonError", message: redact(String(err)) };
 }
 
-export function logError(context: string, err: unknown): void {
-  console.error(JSON.stringify({ level: "error", context, error: toSafeError(err) }));
+// The single place this app writes to the host's log stream. Every line is
+// one JSON object built from already-safe fields.
+export function emit(stream: "info" | "warn" | "error", line: Record<string, unknown>): void {
+  const text = JSON.stringify(line);
+  if (stream === "error") console.error(text);
+  else if (stream === "warn") console.warn(text);
+  else console.info(text);
 }
 
-// Events that page an operator (lib/alert.ts), not just log.
-const ALERT_EVENTS = new Set(["rate_limited", "ssrf_blocked", "cross_site_request_blocked", "session_rejected", "ai_quota_exhausted"]);
+export function logError(context: string, err: unknown): void {
+  emit("error", { level: "error", context, error: toSafeError(err) });
+}
+
+// Events that page an operator (raiseAlert below), not just log.
+const ALERT_EVENTS = new Set(["ai_budget_unavailable", "rate_limited", "ssrf_blocked", "cross_site_request_blocked", "session_rejected", "ai_quota_exhausted"]);
 
 // Security-relevant events (rate-limit hits, blocked SSRF attempts, rejected
 // cross-site requests, invalid input) go out as one structured line each, so
@@ -56,7 +63,7 @@ export function logSecurityEvent(event: string, fields: Record<string, string | 
     if (v === undefined) continue;
     safeFields[k] = typeof v === "string" ? redact(v) : v;
   }
-  console.warn(JSON.stringify({ level: "security", event, ...safeFields }));
+  emit("warn", { level: "security", event, ...safeFields });
   if (ALERT_EVENTS.has(event)) {
     void raiseAlert(event, `Security event: ${event}`, safeFields as Record<string, string | number>);
   }
@@ -67,4 +74,37 @@ export function logSecurityEvent(event: string, fields: Record<string, string | 
 export function isQuotaError(err: unknown): boolean {
   const safe = toSafeError(err);
   return safe.status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(safe.message);
+}
+
+// Pushes an operator alert for events that mean an attack or abuse may be in
+// progress (rate limits crossed, cross-site or SSRF attempts, Gemini quota
+// exhaustion, sessions rejected). With ALERT_WEBHOOK_URL set (a Slack- or
+// Discord-compatible incoming webhook) each alert kind is posted at most
+// once per ALERT_COOLDOWN_MS per instance; every alert is also written as a
+// structured `level: "alert"` log line for log-drain based alerting.
+const ALERT_COOLDOWN_MS = 10 * 60 * 1000;
+const lastSent = new Map<string, number>();
+
+export async function raiseAlert(kind: string, message: string, fields: Record<string, string | number> = {}): Promise<void> {
+  emit("error", { level: "alert", kind, message, ...fields });
+
+  const url = process.env.ALERT_WEBHOOK_URL;
+  if (!url || !url.startsWith("https://")) return;
+  const now = Date.now();
+  if ((lastSent.get(kind) ?? 0) > now - ALERT_COOLDOWN_MS) return;
+  lastSent.set(kind, now);
+
+  const details = Object.entries(fields)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(" ");
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: `[Inbox Buddy] ${message}${details ? ` (${details})` : ""}`, content: `[Inbox Buddy] ${message}` }),
+      signal: AbortSignal.timeout(3000),
+    });
+  } catch (err) {
+    logError("alert.webhook", err);
+  }
 }

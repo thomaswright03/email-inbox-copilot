@@ -61,17 +61,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   callbacks: {
     async signIn({ account, profile }) {
       if (account?.provider !== "google") return false;
+      const userId = account.providerAccountId;
       const email = typeof profile?.email === "string" ? profile.email : "";
       if (!email || profile?.email_verified !== true) {
-        logSecurityEvent("signin_rejected", { reason: "unverified_email" });
-        await logAuditEvent({ userEmail: email || "(none)", action: "sign_in_rejected", detail: "unverified email" });
+        logSecurityEvent("signin_rejected", { user: userId, reason: "unverified_email" });
+        await logAuditEvent({ userId, action: "sign_in_rejected", detail: "unverified email" });
         return false;
       }
       if (!isEmailAllowed(email)) {
-        logSecurityEvent("signin_rejected", { reason: "not_allowlisted" });
-        await logAuditEvent({ userEmail: email, action: "sign_in_rejected", detail: "not on allowlist" });
+        logSecurityEvent("signin_rejected", { user: userId, reason: "not_allowlisted" });
+        await logAuditEvent({ userId, action: "sign_in_rejected", detail: "not on allowlist" });
         return false;
       }
+      logSecurityEvent("signin", { user: userId });
       return true;
     },
     async jwt({ token, account, trigger, session }) {
@@ -88,7 +90,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           logError("auth.session-version", err);
           token.sessionVersion = undefined;
         }
-        await logAuditEvent({ userEmail: token.email ?? "(none)", action: "sign_in" });
+        await logAuditEvent({ userId: account.providerAccountId, action: "sign_in" });
       }
       // The client can only record acceptance of the current legal version;
       // any other value sent through session.update() is ignored.
@@ -116,7 +118,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         };
       } catch (err) {
         logError("auth.refresh", err);
-        await logAuditEvent({ userEmail: token.email ?? "(none)", action: "token_refresh_failed" });
+        await logAuditEvent({ userId: token.googleId ?? "(unknown)", action: "token_refresh_failed" });
         return { ...token, error: "RefreshAccessTokenError" };
       }
     },
@@ -151,7 +153,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         googleId ? revokeUserSessions(googleId) : Promise.resolve(),
         googleId ? purgeUserCaches(googleId) : Promise.resolve(),
       ]);
-      await logAuditEvent({ userEmail: token.email ?? "(none)", action: "sign_out" });
+      logSecurityEvent("signout", { user: googleId ?? "(unknown)" });
+      await logAuditEvent({ userId: googleId ?? "(unknown)", action: "sign_out" });
     },
   },
 });

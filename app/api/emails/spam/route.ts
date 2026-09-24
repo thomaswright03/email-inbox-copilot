@@ -10,7 +10,7 @@ import { isQuotaError, logError, logSecurityEvent } from "@/lib/log";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-async function buildSpamPayload(accessToken: string, userId: string, userEmail: string) {
+async function buildSpamPayload(accessToken: string, userId: string) {
   let emails;
   try {
     emails = await fetchTodaysMessages(accessToken);
@@ -48,7 +48,7 @@ async function buildSpamPayload(accessToken: string, userId: string, userEmail: 
   // classification rows every time a cached response is served.
   await Promise.all(
     flashcards.map((card) =>
-      logAuditEvent({ userEmail, action: "classified_spam", messageId: card.id })
+      logAuditEvent({ userId, action: "classified_spam", messageId: card.id })
     )
   );
 
@@ -62,7 +62,7 @@ export async function GET(req: Request) {
   try {
     await enforceRateLimit(RATE_LIMITS.inboxReads, session.userId);
     const payload = await getOrSetCached(userCacheKey("spam", session.userId), CACHE_TTL_MS, () =>
-      buildSpamPayload(session.accessToken, session.userId, session.userEmail)
+      buildSpamPayload(session.accessToken, session.userId)
     );
     return NextResponse.json(payload);
   } catch (err) {

@@ -68,7 +68,9 @@ export function stripLinksAndImages(markdown: string): string {
   return markdown
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/<[^>]*>/g, "");
+    // Remove every angle bracket rather than trying to match whole tags, so
+    // no partial or nested tag can survive (the renderer skips HTML anyway).
+    .replace(/[<>]/g, "");
 }
 
 export async function summarizeToday(emails: ParsedEmail[]): Promise<string> {

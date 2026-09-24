@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { consumeRateLimit, enforceRateLimit, RateLimitError } from "../rate-limit";
 
 describe("rate limiting (in-memory fallback, no DATABASE_URL)", () => {
@@ -21,5 +21,28 @@ describe("rate limiting (in-memory fallback, no DATABASE_URL)", () => {
     const rule = { name: "t3", limit: 1, windowMs: 60_000 };
     await enforceRateLimit(rule, "u");
     await expect(enforceRateLimit(rule, "u")).rejects.toBeInstanceOf(RateLimitError);
+  });
+});
+
+describe("AI spend budget in production", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("fails closed when there is no shared counter", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("DATABASE_URL", "");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { enforceAiBudget } = await import("../rate-limit");
+    await expect(enforceAiBudget("user-x")).rejects.toBeInstanceOf(RateLimitError);
+  });
+
+  it("still counts in memory outside production", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("DATABASE_URL", "");
+    const { enforceAiBudget } = await import("../rate-limit");
+    await expect(enforceAiBudget("user-y")).resolves.toBeUndefined();
   });
 });

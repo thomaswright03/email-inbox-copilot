@@ -61,6 +61,8 @@ const grants = [
   // Append-only audit trail: the app can add rows but not read, change or erase them.
   `GRANT INSERT ON audit_log TO ${appRole}`,
   `GRANT USAGE ON SEQUENCE audit_log_id_seq TO ${appRole}`,
+  // Retention: rows past the retention period only, via a definer function.
+  `GRANT EXECUTE ON FUNCTION purge_audit_log(integer) TO ${appRole}`,
   `GRANT SELECT, INSERT, UPDATE, DELETE ON response_cache TO ${appRole}`,
   `GRANT SELECT, INSERT, UPDATE, DELETE ON rate_limit TO ${appRole}`,
   `GRANT SELECT, INSERT, UPDATE ON user_sessions TO ${appRole}`,

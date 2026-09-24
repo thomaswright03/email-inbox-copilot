@@ -62,7 +62,7 @@ describe("GET /api/emails/spam", () => {
       },
     ]);
     expect(logAuditEvent).toHaveBeenCalledWith({
-      userEmail: "int-spam-1@example.com",
+      userId: "gid-int-spam-1@example.com",
       action: "classified_spam",
       messageId: "m1",
     });

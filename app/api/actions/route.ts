@@ -5,7 +5,7 @@ import { safeFetchUnsubscribe, UnsafeUrlError } from "@/lib/safe-fetch";
 import { parseUnsubscribeTargets } from "@/lib/unsubscribe";
 import { logAuditEvent } from "@/lib/audit";
 import { invalidateCachedEverywhere, userCacheKey } from "@/lib/response-cache";
-import { jsonError, rateLimitedResponse, rejectCrossSite, requireSession } from "@/lib/api";
+import { jsonError, rateLimitedResponse, readBodyCapped, rejectCrossSite, requireSession } from "@/lib/api";
 import { enforceRateLimit, RATE_LIMITS, RateLimitError } from "@/lib/rate-limit";
 import { logError, logSecurityEvent } from "@/lib/log";
 
@@ -45,8 +45,8 @@ export async function POST(req: Request) {
     return jsonError("Content-Type must be application/json", 415);
   }
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return jsonError("Request too large", 413);
-  const raw = await req.text();
-  if (Buffer.byteLength(raw) > MAX_BODY_BYTES) return jsonError("Request too large", 413);
+  const raw = await readBodyCapped(req, MAX_BODY_BYTES);
+  if (raw === null) return jsonError("Request too large", 413);
   let parsedJson: unknown;
   try {
     parsedJson = JSON.parse(raw);
@@ -60,10 +60,10 @@ export async function POST(req: Request) {
   }
 
   const { action, messageId } = parsed.data;
-  const { userEmail, userId, accessToken } = session;
+  const { userId, accessToken } = session;
 
   if (action === "ignore") {
-    await logAuditEvent({ userEmail, action: "ignore", messageId });
+    await logAuditEvent({ userId, action: "ignore", messageId });
     return NextResponse.json({ ok: true });
   }
 
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
       logError("actions.delete", err);
       return NextResponse.json({ ok: false, error: "Couldn't delete this email right now" }, { status: 502 });
     }
-    await logAuditEvent({ userEmail, action: "delete", messageId });
+    await logAuditEvent({ userId, action: "delete", messageId });
     await invalidateEmailCaches(userId);
     return NextResponse.json({ ok: true });
   }
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
   }
   if (!header) {
     await logAuditEvent({
-      userEmail,
+      userId,
       action: "unsubscribe",
       messageId,
       detail: "failed: no List-Unsubscribe header",
@@ -100,7 +100,7 @@ export async function POST(req: Request) {
   const { url } = parseUnsubscribeTargets(header);
   if (!url) {
     await logAuditEvent({
-      userEmail,
+      userId,
       action: "unsubscribe",
       messageId,
       detail: "failed: mailto-only, no automatic link",
@@ -116,7 +116,7 @@ export async function POST(req: Request) {
   } catch (err) {
     const unsafe = err instanceof UnsafeUrlError;
     const detail = unsafe ? "failed: unsafe unsubscribe URL blocked" : "failed: request error";
-    await logAuditEvent({ userEmail, action: "unsubscribe", messageId, detail });
+    await logAuditEvent({ userId, action: "unsubscribe", messageId, detail });
     if (unsafe) {
       logSecurityEvent("ssrf_blocked", { route: "actions" });
       return NextResponse.json({ ok: false, error: "This unsubscribe link isn't allowed" }, { status: 400 });
@@ -129,11 +129,11 @@ export async function POST(req: Request) {
     await archiveMessage(accessToken, messageId);
   } catch (err) {
     logError("actions.unsubscribe.archive", err);
-    await logAuditEvent({ userEmail, action: "unsubscribe", messageId, detail: "succeeded, archive failed" });
+    await logAuditEvent({ userId, action: "unsubscribe", messageId, detail: "succeeded, archive failed" });
     await invalidateEmailCaches(userId);
     return NextResponse.json({ ok: true, warning: "Unsubscribed, but couldn't archive the message" });
   }
-  await logAuditEvent({ userEmail, action: "unsubscribe", messageId, detail: "succeeded" });
+  await logAuditEvent({ userId, action: "unsubscribe", messageId, detail: "succeeded" });
   await invalidateEmailCaches(userId);
   return NextResponse.json({ ok: true });
 }

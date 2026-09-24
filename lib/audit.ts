@@ -1,5 +1,5 @@
 import { getSql } from "./db";
-import { logError } from "./log";
+import { emit, logError } from "./log";
 
 export type AuditAction =
   | "delete"
@@ -34,27 +34,40 @@ export async function getAuditLogStatus(): Promise<{ configured: boolean; reacha
 // structured log line, so it reaches the host's log drain even when
 // DATABASE_URL isn't configured. The table is append-only for the app's
 // database role (see migrations/ and scripts/migrate.mjs).
+//
+// Rows identify the user by Google account id, never by email address, and
+// `detail` only ever holds one of the fixed strings the app itself writes
+// (no model output, no email content). Rows older than AUDIT_RETENTION_DAYS
+// (default 90) are deleted through the purge_audit_log() database function,
+// the only delete the app's role can perform on this table.
+const RETENTION_DAYS = (() => {
+  const n = Number.parseInt(process.env.AUDIT_RETENTION_DAYS ?? "", 10);
+  return Number.isFinite(n) && n >= 1 ? n : 90;
+})();
+
 export async function logAuditEvent(entry: {
-  userEmail: string;
+  userId: string;
   action: AuditAction;
   messageId?: string;
   detail?: string;
 }): Promise<void> {
-  console.info(
-    JSON.stringify({
-      level: "audit",
-      action: entry.action,
-      ...(entry.messageId ? { messageId: entry.messageId } : {}),
-      ...(entry.detail ? { detail: entry.detail } : {}),
-    })
-  );
+  emit("info", {
+    level: "audit",
+    action: entry.action,
+    user: entry.userId,
+    ...(entry.messageId ? { messageId: entry.messageId } : {}),
+    ...(entry.detail ? { detail: entry.detail } : {}),
+  });
   try {
     const sql = getSql();
     if (!sql) return;
     await sql`
-      INSERT INTO audit_log (user_email, action, message_id, detail)
-      VALUES (${entry.userEmail}, ${entry.action}, ${entry.messageId ?? null}, ${entry.detail ?? null})
+      INSERT INTO audit_log (user_id, action, message_id, detail)
+      VALUES (${entry.userId}, ${entry.action}, ${entry.messageId ?? null}, ${entry.detail ?? null})
     `;
+    if (Math.random() < 0.02) {
+      await sql`SELECT purge_audit_log(${RETENTION_DAYS})`;
+    }
   } catch (err) {
     logError("audit.write", err);
   }

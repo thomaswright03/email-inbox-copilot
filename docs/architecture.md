@@ -37,8 +37,10 @@ lives in `app/api/*/route.ts` handlers, called by the client component `Dashboar
   `List-Unsubscribe`).
 - **Postgres (Neon, optional)**, schema in `migrations/`, applied by `npm run db:migrate`
   with the owner role; the app itself connects as a least-privilege role (see `SECURITY.md`):
-  - `audit_log`: account email, action, Gmail message id, fixed-vocabulary detail, timestamp.
-    Append-only for the app role. No message content and no model-written text.
+  - `audit_log`: Google account id (not the email address), action, Gmail message id,
+    fixed-vocabulary detail, timestamp. Append-only for the app role; rows older than
+    `AUDIT_RETENTION_DAYS` (default 90) are deleted through `purge_audit_log()`. No message
+    content and no model-written text.
   - `response_cache`: the day's summary and spam cards (sender, subject, snippet, summary),
     **AES-256-GCM encrypted** with a key derived from `AUTH_SECRET`, keyed by
     `today|spam:<Google account id>:<date>`, 5-minute TTL. Expired rows are deleted on every
@@ -65,6 +67,6 @@ lives in `app/api/*/route.ts` handlers, called by the client component `Dashboar
 | Response caching | `lib/cache.ts`, `lib/db-cache.ts`, `lib/response-cache.ts` |
 | Server-side session, consent and CSRF guards | `lib/session.ts`, `lib/session-store.ts`, `lib/api.ts`, `proxy.ts` |
 | Rate limits and AI spend budgets | `lib/rate-limit.ts` |
-| Encryption at rest, logging, alerts | `lib/crypto.ts`, `lib/log.ts`, `lib/alert.ts` |
+| Encryption at rest, logging, alerts | `lib/crypto.ts`, `lib/log.ts` |
 | Database schema and grants | `migrations/`, `scripts/migrate.mjs` |
 | Legal content + consent versioning | `content/legal.ts`, `components/ConsentGate.tsx` |
