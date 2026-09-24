@@ -1,16 +1,22 @@
 // Answers a user's request for a copy of, or deletion of, the data Inbox
-// Buddy holds about them (Privacy Policy, "Your choices and rights"). Runs
-// with the database OWNER connection, because the app's own role can't read
-// or delete audit_log or consent_records:
+// Buddy holds about them (Privacy Policy, "Your choices and rights").
 //
-//   MIGRATION_DATABASE_URL=postgres://owner... node scripts/user-data.mjs export <google-account-id> > export.json
-//   MIGRATION_DATABASE_URL=postgres://owner... node scripts/user-data.mjs delete <google-account-id>
+// 1. Check the request. Users send it from the dashboard's "Your data" link,
+//    which includes a signed request code. Verify it with the production
+//    AUTH_SECRET, and check that the email inside matches the address the
+//    request came from:
 //
-// The Google account id is the `sub` of the user's Google account (it is
-// the user_id in audit_log and the google_id in user_sessions). To find it
-// from an email address, ask the user to sign in once and look for their
-// `signin` log line, or check the Google Cloud console's OAuth user list.
-// docs/incident-response.md and SECURITY.md describe when to run this.
+//      AUTH_SECRET=... node scripts/user-data.mjs verify <request-code>
+//
+//    A request without a valid code can't be matched to an account (nothing
+//    stored maps email addresses to account ids): reply asking the person
+//    to sign in and use the "Your data" link.
+//
+// 2. Export or delete, with the database OWNER connection, because the app's
+//    own role can't read or delete audit_log or consent_records:
+//
+//      MIGRATION_DATABASE_URL=postgres://owner... node scripts/user-data.mjs export <google-account-id> > export.json
+//      MIGRATION_DATABASE_URL=postgres://owner... node scripts/user-data.mjs delete <google-account-id>
 //
 // Tables covered: audit_log, consent_records, user_sessions, response_cache
 // (keys "today:<id>:..." and "spam:<id>:..."; values are encrypted and
@@ -18,11 +24,35 @@
 // rate_limit (buckets "<rule>:<id>"). Nothing else in the database, and
 // nothing outside it except the host's log drain, holds per-user data;
 // log lines expire under the host's own log retention.
+import { createHmac, hkdfSync, timingSafeEqual } from "node:crypto";
 import { neon } from "@neondatabase/serverless";
 
-const [command, googleId] = process.argv.slice(2);
+const [command, arg] = process.argv.slice(2);
+
+// Same format and key derivation as lib/data-request.ts.
+if (command === "verify") {
+  const secret = process.env.AUTH_SECRET;
+  if (!secret || !arg) {
+    console.error("usage: AUTH_SECRET=... node scripts/user-data.mjs verify <request-code>");
+    process.exit(1);
+  }
+  const [payload, mac, extra] = arg.trim().split(".");
+  const key = Buffer.from(hkdfSync("sha256", secret, "inbox-buddy", "inbox-buddy:data-request", 32));
+  const expected = Buffer.from(createHmac("sha256", key).update(payload ?? "").digest("base64url"));
+  const given = Buffer.from(mac ?? "");
+  if (!payload || extra !== undefined || expected.length !== given.length || !timingSafeEqual(expected, given)) {
+    console.error("INVALID: this code was not issued by this deployment (or AUTH_SECRET has been rotated since).");
+    process.exit(2);
+  }
+  const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  console.log(`valid code for account id ${claims.u}, email ${claims.e}, issued ${new Date(claims.t * 1000).toISOString()}`);
+  console.log("Act only if the request came from that email address.");
+  process.exit(0);
+}
+
+const googleId = arg;
 if (!["export", "delete"].includes(command) || !googleId || !/^[0-9A-Za-z_-]{1,128}$/.test(googleId)) {
-  console.error("usage: node scripts/user-data.mjs export|delete <google-account-id>");
+  console.error("usage: node scripts/user-data.mjs verify <request-code> | export <google-account-id> | delete <google-account-id>");
   process.exit(1);
 }
 const url = process.env.MIGRATION_DATABASE_URL;

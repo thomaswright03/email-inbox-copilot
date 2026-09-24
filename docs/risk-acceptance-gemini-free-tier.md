@@ -6,7 +6,8 @@
 **Prepared by:** Thomas Wright
 **Status:** SUPERSEDED on 2026-09-24, never signed. See the note below.
 
-> **Superseded.** This memo (and its PDF copy) is no longer the basis for anything. The Google Workspace API
+> **Superseded.** This memo is no longer the basis for anything (its unsigned PDF copy was
+> removed on 2026-09-24; it remains in git history). The Google Workspace API
 > User Data and Developer Policy forbids using Gmail data to train or improve AI models,
 > and the Gemini free tier lets Google do exactly that, so no risk acceptance can cover
 > it. Since 2026-09-24 the app sends nothing to Gemini unless

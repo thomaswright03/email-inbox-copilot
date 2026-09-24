@@ -76,14 +76,17 @@ https://myaccount.google.com/permissions (signing out in the app already revokes
 ## Access and deletion requests
 
 ```bash
+AUTH_SECRET='<production AUTH_SECRET>' node scripts/user-data.mjs verify <request-code>
 MIGRATION_DATABASE_URL='<owner connection>' node scripts/user-data.mjs export <google-account-id> > export.json
 MIGRATION_DATABASE_URL='<owner connection>' node scripts/user-data.mjs delete <google-account-id>
 ```
 
 Covers `audit_log`, `consent_records`, `user_sessions`, `response_cache` and `rate_limit`.
 It needs the owner connection because the app role can't read or delete the audit and
-consent tables. Confirm the request came from the account's own address first, and answer
-within 30 days (Privacy Policy section 6). Incidents: `docs/incident-response.md`.
+consent tables. Users start a request from the dashboard's "Your data" link, which emails
+their account id with a signed request code (`lib/data-request.ts`). `verify` checks the
+code and prints the account id and email it was issued to; act only if the request came
+from that email. Answer within 30 days (Privacy Policy section 6). Incidents: `docs/incident-response.md`.
 
 ## Rotating credentials
 

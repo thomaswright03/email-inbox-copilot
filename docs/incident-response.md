@@ -29,8 +29,8 @@ Unsubscribe) a user says they did not take.
 
 | Source | What it shows | Kept for |
 |---|---|---|
-| `audit_log` table (owner connection) | Sign-ins, rejected sign-ins, sign-outs, consent, token-refresh failures, rejected sessions, rate limiting, every Delete/Unsubscribe/Ignore and spam flag, by Google account id and time | 90 days, so export it early |
-| Vercel runtime logs (`"level":"audit"`, `"level":"security"`, `"level":"alert"` lines) | The same events plus blocked SSRF and cross-site requests | The Vercel plan's log retention (short), so export immediately |
+| `audit_log` table (owner connection) | Sign-ins, rejected sign-ins, sign-outs, consent, token-refresh failures, every Delete/Unsubscribe/Ignore and spam flag, by Google account id and time | 90 days, so export it early |
+| Vercel runtime logs (`"level":"audit"`, `"level":"security"`, `"level":"alert"` lines) | The same events plus rejected sessions, rate limiting, blocked SSRF and cross-site requests | The Vercel plan's log retention (short), so export immediately |
 | `ALERT_WEBHOOK_URL` channel | Alert history | The channel's retention |
 | Google Cloud console (OAuth client, API key usage) | Token and key use | Google's retention |
 | GitHub (commits, Actions logs, secret-scanning alerts) | Code and CI changes | GitHub's retention |
@@ -39,8 +39,9 @@ Unsubscribe) a user says they did not take.
 
 | Who | When | Source |
 |---|---|---|
-| Affected users who are Arizona residents | Within 45 days of determining a breach of "personal information" occurred (includes account credentials allowing access to an online account) | A.R.S. §18-552 (read from secondary sources, unverified against the statute; confirm with counsel) |
-| Arizona Attorney General and the three largest consumer reporting agencies | Also within 45 days, if more than 1,000 Arizona residents are notified | A.R.S. §18-552 (as above) |
+| Affected users who are Arizona residents | Within 45 days of determining a breach of "personal information" occurred (includes account credentials allowing access to an online account) | A.R.S. §18-552 (confirm with counsel) |
+| Arizona Attorney General and the three largest nationwide consumer reporting agencies | Also within 45 days, if the breach "requires notification of more than one thousand individuals" | A.R.S. §18-552 (azleg.gov, read by the Legal Check 2026-09-24) |
+| Credentials-only breaches | If the only information involved is account login credentials (for example session or OAuth tokens), §18-552 allows notice by email or online that directs people to change their password and security settings, or to take other steps to protect the account | A.R.S. §18-552 (as above); here that means asking users to sign out, remove the app at https://myaccount.google.com/permissions and sign in again |
 | Affected users in other US states | Each state's breach law; many require notice "without unreasonable delay" and some set 30 to 60 days | State statutes: confirm with counsel for each state involved |
 | Google | Promptly, for any incident involving Google user data obtained through Google APIs | Google API Services User Data Policy; Google API Terms of Service (confirm current wording) |
 | Vendors involved (Vercel, Neon, Google Cloud) | As soon as practical, to preserve their logs | Their DPAs (docs/compliance-records.md) |

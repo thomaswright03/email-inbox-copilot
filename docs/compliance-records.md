@@ -91,8 +91,8 @@ Changing any of these requires the same change in the Privacy Policy section 5 a
 
 ## 6. Superseded records
 
-- `docs/risk-acceptance-gemini-free-tier.md` (and the PDF): superseded 2026-09-24, never
-  signed. Replaced by section 1 above.
+- `docs/risk-acceptance-gemini-free-tier.md`: superseded 2026-09-24, never signed (its PDF
+  copy was removed; it remains in git history). Replaced by section 1 above.
 
 ## 7. Sign-off
 

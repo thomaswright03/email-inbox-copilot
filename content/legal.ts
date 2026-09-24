@@ -3,7 +3,7 @@
 // whenever the substance of either document changes so users are asked
 // to re-agree.
 
-export const LEGAL_VERSION = "2026-09-24.1";
+export const LEGAL_VERSION = "2026-09-24.2";
 export const LEGAL_LAST_UPDATED = "September 24, 2026";
 export const CONTACT_EMAIL = "t@thomasewright.com";
 export const COMPANY_NAME = "Wright AI Solutions LLC";
@@ -74,9 +74,9 @@ Everything below is held in one database, hosted by Neon in the United States, o
 | Your Google account id, name, email address, profile picture link, and Google access and refresh tokens | An encrypted cookie in your browser, not our database | Until you sign out, or 12 hours after you last used the Service |
 | Your Google account id and a session number | Database (sessions table) | 30 days after your last sign-in; it lets us end all your sessions at once |
 | Record of your agreement: Google account id, the version of these documents you agreed to, and when | Database (consent records) | 3 years from when you agreed, so we can show what you agreed to |
-| Activity log: Google account id, the event, the Gmail message id where there is one, a fixed description, and the time. Events: sign-in, rejected sign-in attempt (including by people who are not users), sign-out, agreement to these documents, failed token refresh, session rejected, usage limit reached, message flagged as spam, Delete, Unsubscribe, Ignore | Database (activity log) | 90 days |
+| Activity log: Google account id, the event, the Gmail message id where there is one, a fixed description, and the time. Events: sign-in, rejected sign-in attempt (including by people who are not users), sign-out, agreement to these documents, failed token refresh, message flagged as spam, Delete, Unsubscribe, Ignore | Database (activity log) | 90 days |
 | Usage counters: your Google account id and a count per time window | Database (rate limits) | 2 days |
-| Server logs: Google account id, event names, error messages with credentials removed, and the activity-log events above | Vercel logs | The runtime-log retention of our Vercel plan |
+| Server logs: Google account id, error messages with credentials removed, the activity-log events above, and security events (for example a rejected session, a usage limit reached, or a blocked request) | Vercel logs | The runtime-log retention of our Vercel plan |
 
 None of the stored data, the activity log included, contains the content of your messages outside the 5-minute encrypted cache.
 
@@ -85,7 +85,7 @@ Messages you Delete stay in Gmail Trash under Gmail's own rules. We do not contr
 ## 6. Your choices and rights
 
 - **Disconnect.** Signing out revokes our Google access token, ends your sessions everywhere, and deletes your cached data. You can also remove Inbox Buddy at any time from your [Google Account permissions page](https://myaccount.google.com/permissions).
-- **Get a copy, or have it deleted.** Email ${CONTACT_EMAIL} from the address you use with Inbox Buddy to ask for a copy of the data we hold about you (Section 5) or for it to be deleted. We will confirm the request comes from you, and answer within 30 days. Deletion removes your rows from every table listed in Section 5; server logs expire on their own schedule.
+- **Get a copy, or have it deleted.** Sign in, open **Your data** at the bottom of the page, and choose "request a copy" or "request deletion". This opens an email to ${CONTACT_EMAIL} with your account id and a request code that shows the request comes from your account; send it from the address you use with Inbox Buddy. We store nothing that links an email address to an account, so we can't act on a request without that code. We answer within 30 days. Deletion removes your rows from every table listed in Section 5; server logs expire on their own schedule. If you can no longer sign in, email us anyway and we will work with you to confirm the request.
 - **If someone who uses Inbox Buddy has emailed you**, and you want to ask about information from your message, contact us at the same address.
 
 ## 7. Age

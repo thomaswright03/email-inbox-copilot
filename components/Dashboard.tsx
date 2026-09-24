@@ -7,6 +7,7 @@ import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { SPAM_REASON_LABEL, type SpamReason } from "@/lib/spam-reasons";
+import { CONTACT_EMAIL } from "@/content/legal";
 import {
   Inbox,
   LogOut,
@@ -109,7 +110,28 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
-export default function Dashboard({ userName }: { userName: string }) {
+// mailto link for a copy or deletion request (Privacy Policy section 6). The
+// signed code lets the operator confirm the request is from this account.
+function dataRequestHref(kind: "copy" | "deletion", accountId: string, code: string | null): string {
+  const subject = kind === "copy" ? "Inbox Buddy: copy of my data" : "Inbox Buddy: delete my data";
+  const body = [
+    kind === "copy" ? "Please send me a copy of the data you hold about me." : "Please delete the data you hold about me.",
+    "",
+    `Account id: ${accountId}`,
+    `Request code: ${code ?? "(unavailable)"}`,
+  ].join("\n");
+  return `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+export default function Dashboard({
+  userName,
+  accountId,
+  dataRequestCode,
+}: {
+  userName: string;
+  accountId: string;
+  dataRequestCode: string | null;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
@@ -466,6 +488,21 @@ export default function Dashboard({ userName }: { userName: string }) {
         <Link href="/privacy" target="_blank" className="hover:text-foreground">
           Privacy Policy
         </Link>
+        <span className="mx-2">·</span>
+        <details className="inline">
+          <summary className="inline cursor-pointer hover:text-foreground">Your data</summary>
+          <p className="mt-2">
+            Account id <span className="font-mono">{accountId}</span>. Email us from this account&apos;s address to{" "}
+            <a href={dataRequestHref("copy", accountId, dataRequestCode)} className="underline hover:text-foreground">
+              request a copy
+            </a>{" "}
+            or{" "}
+            <a href={dataRequestHref("deletion", accountId, dataRequestCode)} className="underline hover:text-foreground">
+              request deletion
+            </a>
+            ; the link fills in a code that shows the request is yours.
+          </p>
+        </details>
       </footer>
 
       {confirmingDelete && (
