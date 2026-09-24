@@ -104,6 +104,7 @@ describe("Gemini calls", () => {
   });
 
   it("sends nothing when the paid tier isn't attested", async () => {
+    vi.stubEnv("GEMINI_REQUIRE_PAID_TIER", "true");
     vi.stubEnv("GEMINI_PAID_TIER_PROJECT", "");
     vi.spyOn(console, "info").mockImplementation(() => {});
     await expect(summarizeToday([EMAIL])).rejects.toThrow(/disabled/);
