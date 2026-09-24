@@ -159,6 +159,7 @@ describe("GET /api/emails/spam", () => {
   });
 
   it("uses the rule-based spam flags and sends nothing to Gemini when the paid tier isn't attested", async () => {
+    vi.stubEnv("GEMINI_REQUIRE_PAID_TIER", "true");
     vi.stubEnv("GEMINI_PAID_TIER_PROJECT", "");
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-5@example.com"));
     const promo = { ...EMAIL, subject: "LIMITED TIME: 50% OFF everything", snippet: "Unsubscribe any time" };
