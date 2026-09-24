@@ -11,6 +11,10 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "eval": "vitest run --config evals/vitest.config.ts evals/model.eval.ts",
+    "eval:rules": "vitest run --config evals/vitest.config.ts evals/rules.eval.ts",
     "db:migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {
@@ -29,12 +33,17 @@
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^22.20.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^5.0.1",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
+    "jsdom": "^30.1.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite": "^8.3.0",

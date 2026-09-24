@@ -25,9 +25,9 @@ function applyTheme(theme: Theme) {
       : [[THEME_COLORS[theme], null]];
   for (const [color, media] of entries) {
     const meta = document.createElement("meta");
-    meta.name = "theme-color";
-    meta.content = color;
-    if (media) meta.media = media;
+    meta.setAttribute("name", "theme-color");
+    meta.setAttribute("content", color);
+    if (media) meta.setAttribute("media", media);
     document.head.appendChild(meta);
   }
 }
