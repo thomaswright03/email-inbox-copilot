@@ -38,7 +38,7 @@ spam list).
 | Google (Gmail API, OAuth) | OAuth tokens; Gmail metadata requests | Google API Services User Data Policy; Google Workspace API User Data and Developer Policy | **NEEDS THOMAS** |
 | Google (Gemini API, paid) | Sender, subject, snippet (only with AI on) | Gemini API Additional Terms (paid services); Google Cloud Data Processing Addendum | **NEEDS THOMAS** |
 | Vercel Inc. | All requests; runtime logs with Google account ids | Vercel DPA (vercel.com/legal/dpa) | **NEEDS THOMAS** |
-| Neon Inc. | Database: encrypted 5-minute cache, audit log, consent records, session versions, rate-limit counters | Neon DPA (neon.tech/dpa) | **NEEDS THOMAS** |
+| Neon Inc. | Database: encrypted 5-minute cache, audit log, consent records, session versions, Not spam choices, rate-limit counters | Neon DPA (neon.tech/dpa) | **NEEDS THOMAS** |
 | Alert webhook (Slack/Discord), optional | Event names only, no personal data | n/a | n/a |
 
 Also **NEEDS THOMAS**: the Vercel plan in use and its runtime-log retention period (the
@@ -79,12 +79,13 @@ section 1, and enforced where the code can:
 
 | Data | Period | Where set | Rationale |
 |---|---|---|---|
-| Encrypted inbox cache | 5 minutes; deleted at sign-out | `CACHE_TTL_MS` in the two email routes | Avoid re-reading Gmail on reload |
+| Encrypted inbox cache | 5 minutes; deleted at sign-out | `INBOX_CACHE_TTL_MS` in `lib/inbox.ts` | Avoid re-reading Gmail on reload |
 | Session cookie | 12 hours idle | `auth.ts` `maxAge` | Cookie carries a refresh token |
 | Session-version rows | 30 days after last sign-in | `migrations/002`, `purge_user_sessions` | Only needed while a session can be alive |
 | Activity (audit) log | 90 days (`AUDIT_RETENTION_DAYS`, minimum 30; don't raise it without updating the Privacy Policy) | `lib/audit.ts`, `purge_audit_log` | Investigate incidents and disputes |
 | Consent records | 3 years | `migrations/002`, `purge_consent_records` | Evidence of what each user agreed to |
 | Rate-limit counters | 2 days | `lib/rate-limit.ts` | Enforce limits |
+| Not spam choices (Google account id + Gmail message id) | 7 days | `RETENTION_DAYS` in `lib/ignored.ts` | Keep a message the user cleared from being flagged again; the dashboard only covers 24 hours |
 
 Changing any of these requires the same change in the Privacy Policy section 5 and a new
 `LEGAL_VERSION`.

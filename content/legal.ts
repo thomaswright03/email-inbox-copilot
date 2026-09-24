@@ -3,7 +3,7 @@
 // whenever the substance of either document changes so users are asked
 // to re-agree.
 
-export const LEGAL_VERSION = "2026-09-24.2";
+export const LEGAL_VERSION = "2026-09-24.3";
 export const LEGAL_LAST_UPDATED = "September 24, 2026";
 export const CONTACT_EMAIL = "t@thomasewright.com";
 export const COMPANY_NAME = "Wright AI Solutions LLC";
@@ -41,7 +41,7 @@ Inbox Buddy never retrieves full message bodies or attachments, and never compos
 ## 3. How we use information
 
 - **Your daily summary and spam flags.** When AI features are on, the sender, subject line, and preview snippet of your recent messages are sent to Google's Gemini API to write your summary and to decide which messages look like spam. When AI features are off, Inbox Buddy instead builds a simple summary and spam list on our own servers using fixed rules (for example, messages with an unsubscribe link or common marketing wording), and nothing is sent to Gemini. The app labels which kind of result you are looking at.
-- **Taking the actions you request.** Delete moves the message to Gmail Trash. Unsubscribe sends a request to the unsubscribe web address the sender published in that message, and then archives the message (removes it from your Inbox; it stays in All Mail). Ignore takes no action on your mailbox.
+- **Taking the actions you request.** Delete moves the message to Gmail Trash. Unsubscribe, for senders that support one-click unsubscribe, sends a request to the unsubscribe web address the sender published in that message, and then archives the message (removes it from your Inbox; it stays in All Mail); for other senders it opens the sender's own unsubscribe page, or a prefilled unsubscribe email in Gmail, for you to complete yourself. Not spam takes no action on your mailbox: we remember the message's Gmail id so it isn't flagged again. Undo reverses a Delete (moves the message back out of Trash), the archive step of an Unsubscribe (moves the message back to your Inbox), or a Not spam.
 - **Security and abuse prevention.** We count requests per account to enforce usage limits, and keep the activity log described in Section 5.
 
 We do not sell your information, use it for advertising, or use it to train or improve any AI model.
@@ -74,7 +74,8 @@ Everything below is held in one database, hosted by Neon in the United States, o
 | Your Google account id, name, email address, profile picture link, and Google access and refresh tokens | An encrypted cookie in your browser, not our database | Until you sign out, or 12 hours after you last used the Service |
 | Your Google account id and a session number | Database (sessions table) | 30 days after your last sign-in; it lets us end all your sessions at once |
 | Record of your agreement: Google account id, the version of these documents you agreed to, and when | Database (consent records) | 3 years from when you agreed, so we can show what you agreed to |
-| Activity log: Google account id, the event, the Gmail message id where there is one, a fixed description, and the time. Events: sign-in, rejected sign-in attempt (including by people who are not users), sign-out, agreement to these documents, failed token refresh, message flagged as spam, Delete, Unsubscribe, Ignore | Database (activity log) | 90 days |
+| Messages you marked Not spam: your Google account id and the Gmail message id | Database (Not spam list) | 7 days, long enough to cover the 24 hours of mail the Service shows |
+| Activity log: Google account id, the event, the Gmail message id where there is one, a fixed description, and the time. Events: sign-in, rejected sign-in attempt (including by people who are not users), sign-out, agreement to these documents, failed token refresh, message flagged as spam, Delete, Unsubscribe, Not spam, Undo | Database (activity log) | 90 days |
 | Usage counters: your Google account id and a count per time window | Database (rate limits) | 2 days |
 | Server logs: Google account id, error messages with credentials removed, the activity-log events above, and security events (for example a rejected session, a usage limit reached, or a blocked request) | Vercel logs | The runtime-log retention of our Vercel plan |
 
@@ -132,7 +133,7 @@ Inbox Buddy connects to your Gmail account and:
 
 - Generates a summary of recent messages, written by AI when AI features are on, or built from simple rules when they are off
 - Identifies inbox messages that are likely spam and displays them as cards
-- Lets you Delete a message (moves it to Gmail Trash), Unsubscribe from a sender (sends a request to that sender's own published unsubscribe address, then archives the message), or Ignore a card (no action taken)
+- Lets you Delete a message (moves it to Gmail Trash), Unsubscribe from a sender (for senders that support one-click unsubscribe, sends a request to that sender's own published unsubscribe address, then archives the message; for other senders, opens their unsubscribe page or a prefilled unsubscribe email for you to complete), or mark a card Not spam (no action on your mailbox; the message isn't flagged again)
 
 ## 3. AI-generated content — important disclaimer
 
@@ -144,8 +145,8 @@ Summaries and spam classifications are generated automatically, by a third-party
 
 By clicking Delete or Unsubscribe, you are directly instructing us to take that action on your Gmail account through Google's API, on your behalf, immediately:
 
-- **Delete** moves the message to your Gmail Trash. It is not permanently destroyed at that moment (Gmail's own Trash retention applies), but Inbox Buddy does not provide an "undo" within the app itself.
-- **Unsubscribe** sends a request to the unsubscribe address the sender published in their message, and then archives that message (removes it from your Inbox; it stays in All Mail). We do not control, and cannot guarantee, whether the sender actually stops emailing you, and the request cannot be undone.
+- **Delete** moves the message to your Gmail Trash. It is not permanently destroyed at that moment (Gmail's own Trash retention applies). Inbox Buddy offers Undo for a few seconds afterwards; after that, restore it from Gmail Trash.
+- **Unsubscribe**, for senders that support one-click unsubscribe, sends a request to the unsubscribe address the sender published in their message and, if the sender accepts it, archives that message (removes it from your Inbox; it stays in All Mail). For other senders, Inbox Buddy opens the sender's own unsubscribe page or a prefilled unsubscribe email, and you complete it there. We do not control, and cannot guarantee, whether the sender actually stops emailing you, and the unsubscribe request cannot be undone (Undo only moves the message back to your Inbox).
 
 Only click these buttons for messages and senders you intend to act on.
 
