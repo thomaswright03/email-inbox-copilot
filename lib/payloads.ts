@@ -14,12 +14,15 @@ export type TodayPayload = {
   aiStatus: AiStatus;
   // When the daily AI budget resets (ISO time), with aiStatus "budget".
   aiResetsAt?: string;
-  // The Actionable Briefing (lib/ai.ts summarizeToday): one item per email
-  // still in the inbox, newest first. null when it wasn't written; `groups`
-  // is the rule-based view then.
+  // The Actionable Briefing (lib/triage.ts): one item per email in the
+  // inbox, newest first. null when it wasn't written; `groups` is the
+  // rule-based view then.
   briefing: BriefingItem[] | null;
   groups: RuleGroups | null;
   generatedAt: string;
+  // The user's local date (YYYY-MM-DD, lib/local-day.ts) the list covers,
+  // which is what "due today" is measured against.
+  localDate: string;
   count: number;
   truncated: boolean;
   totalEstimate: number;
@@ -47,16 +50,11 @@ export type SpamPayload = {
   aiStatus: AiStatus;
   generatedAt: string;
   flashcards: SpamCardPayload[];
-  // Possible spam that Gemini hasn't checked yet: more than one load checks
-  // (lib/ai.ts MAX_CLASSIFY_PER_LOAD), or today's AI budget ran out. They
-  // are checked on a later load.
-  unchecked?: number;
-  // When the daily AI budget resets (ISO time), when the budget is why
-  // messages weren't checked (aiStatus "budget", or unchecked > 0).
+  // When the daily AI budget resets (ISO time), with aiStatus "budget".
   aiResetsAt?: string;
 };
 
-export type ActionName = "delete" | "unsubscribe" | "ignore" | "done" | "undo_delete" | "undo_archive" | "undo_ignore";
+export type ActionName = "delete" | "unsubscribe" | "ignore" | "done" | "snooze" | "undo_delete" | "undo_archive" | "undo_ignore";
 
 export type ActionResult =
   | { ok: true; archived?: boolean; warning?: "archive_failed" }

@@ -80,7 +80,7 @@ section 1, and enforced where the code can:
 | Data | Period | Where set | Rationale |
 |---|---|---|---|
 | Encrypted inbox cache | 5 minutes; deleted at sign-out | `INBOX_CACHE_TTL_MS` in `lib/inbox.ts` | Avoid re-reading Gmail on reload |
-| Encrypted AI spam verdicts (Gmail message id, spam yes/no, fixed reason) | 26 hours; deleted at sign-out | `VERDICT_TTL_MS` in `lib/verdict-cache.ts` | Send each email to Gemini once, within the daily AI budget |
+| Encrypted AI spam verdicts (Gmail message id, spam yes/no, fixed reason) | 26 hours; deleted at sign-out | `VERDICT_TTL_MS` in `lib/verdict-cache.ts` | Reuse each email's spam verdict (from the triage call) without asking Gemini again, within the daily AI budget |
 | Session cookie | 12 hours idle | `auth.ts` `maxAge` | Cookie carries a refresh token |
 | Session-version rows | 30 days after last sign-in | `migrations/002`, `purge_user_sessions` | Only needed while a session can be alive |
 | Activity (audit) log | 90 days (`AUDIT_RETENTION_DAYS`, minimum 30; don't raise it without updating the Privacy Policy) | `lib/audit.ts`, `purge_audit_log` | Investigate incidents and disputes |

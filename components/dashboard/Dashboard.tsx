@@ -20,6 +20,8 @@ import { ErrorState, recoveryFor, SkeletonCards, SlowNotice } from "./States";
 import { errorMessageKey } from "./errors";
 import { formatResetTime } from "./format";
 import { useInbox } from "./useInbox";
+import { useLater } from "./useLater";
+import { laterTime, type LaterChoice, type LaterKind } from "./later";
 
 type ActionResponse = Extract<ActionResult, { ok: true }>;
 
@@ -97,6 +99,34 @@ export default function Dashboard({
     // was revoked): the session is no longer usable, so sign out cleanly.
     if (session?.error === "RefreshAccessTokenError") void signOut();
   }, [session?.error]);
+
+  // Snooze and Remind me (components/dashboard/later.ts). When one comes
+  // due, a browser notification is shown if the user allowed them; the
+  // dashboard highlights it either way.
+  const todayData = inbox.today.status === "ready" ? inbox.today.data : null;
+  const todayLoading = inbox.today.status === "loading";
+  const notifyDue = useCallback(
+    (ids: string[]) => {
+      // Wait for today's list, so the notification can name the email.
+      if (todayLoading) return false;
+      if (typeof Notification === "undefined" || Notification.permission !== "granted") return true;
+      for (const id of ids) {
+        const email = todayData?.emails.find((e) => e.id === id);
+        try {
+          new Notification(t("later.notificationTitle"), {
+            body: email ? `${parseSender(email.from).name}: ${email.subject}` : t("later.notificationBody"),
+            tag: `inbox-buddy-${id}`,
+          });
+        } catch {
+          // Some browsers only allow notifications from a service worker;
+          // the in-page highlight still shows.
+        }
+      }
+      return true;
+    },
+    [todayData, todayLoading, t]
+  );
+  const later = useLater(accountId, notifyDue);
 
   const dismissToast = useCallback(() => setToast(null), []);
   const closeConfirm = useCallback(() => setConfirming(null), []);
@@ -219,6 +249,7 @@ export default function Dashboard({
         return;
       }
       setDone(item.id, true);
+      later.remove(item.id);
       showToast({
         tone: "success",
         message: t("toast.done", { subject: email.subject }),
@@ -236,6 +267,31 @@ export default function Dashboard({
     } finally {
       setDonePending(null);
     }
+  }
+
+  // Snooze hides the item in this browser until the chosen time (Gmail's
+  // API has no snooze; the server only records that it was used). Remind me
+  // keeps it where it is and asks, once, to show a notification then.
+  function setLater(item: BriefingItem, email: TodayPayload["emails"][number], kind: LaterKind, choice: LaterChoice) {
+    const until = laterTime(choice);
+    later.set(item.id, { kind, until, threadId: email.threadId });
+    if (kind === "snooze") void postAction("snooze", item.id);
+    else if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      try {
+        void Notification.requestPermission().catch(() => {});
+      } catch {
+        // Older browsers take a callback instead; the in-page highlight is enough.
+      }
+    }
+    const time = new Intl.DateTimeFormat(locale, { weekday: "short", hour: "numeric", minute: "2-digit" }).format(until);
+    showToast({
+      tone: "success",
+      message: t(kind === "snooze" ? "toast.snoozed" : "toast.reminder", { subject: email.subject, time }),
+      onUndo: () => {
+        later.remove(item.id);
+        showToast({ tone: "success", message: t("toast.undone") });
+      },
+    });
   }
 
   const spamCount = inbox.spam.status === "ready" ? cards.length : null;
@@ -259,6 +315,9 @@ export default function Dashboard({
               doneIds={doneIds}
               pendingId={donePending}
               onDone={(item, email) => void markDone(item, email)}
+              later={later}
+              onLater={setLater}
+              onDismissDue={later.remove}
             />
           ) : inbox.spam.status === "error" ? (
             <ErrorState
@@ -282,27 +341,6 @@ export default function Dashboard({
                 <p className="mb-3 text-sm text-muted">
                   {t(`spam.ai.${inbox.spam.data.aiStatus}`, { time: resetTime(inbox.spam.data.aiResetsAt) })}
                 </p>
-              )}
-              {(inbox.spam.data.unchecked ?? 0) > 0 && (
-                <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-muted">
-                  <span>
-                    {inbox.spam.data.aiResetsAt
-                      ? t("spam.uncheckedBudget", {
-                          count: inbox.spam.data.unchecked ?? 0,
-                          time: resetTime(inbox.spam.data.aiResetsAt),
-                        })
-                      : t("spam.unchecked", { count: inbox.spam.data.unchecked ?? 0 })}
-                  </span>
-                  {!inbox.spam.data.aiResetsAt && (
-                    <button
-                      onClick={() => void inbox.checkMoreSpam()}
-                      disabled={inbox.checkingSpam}
-                      className="tap-h inline-flex items-center rounded-lg border border-border bg-surface px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {inbox.checkingSpam ? t("spam.checking") : t("spam.checkMore")}
-                    </button>
-                  )}
-                </div>
               )}
               {cards.length > 0 ? (
                 <div className="grid grid-cols-1 gap-3">

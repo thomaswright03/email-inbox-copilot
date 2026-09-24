@@ -61,3 +61,13 @@ export function localDay(timeZone: string, now: Date = new Date()): LocalDay {
 export function localDayFrom(req: Request, now?: Date): LocalDay {
   return localDay(resolveTimeZone(new URL(req.url).searchParams.get("tz")), now);
 }
+
+// The user's current local date and time, for the triage prompt, so the
+// model can turn "Friday" or "tomorrow" in an email into a calendar date:
+// "Thursday, 2026-09-24, 14:05 (America/Los_Angeles)".
+export function describeNow(timeZone: string, now: Date = new Date()): string {
+  const w = wallClock(now.getTime(), timeZone);
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "long" }).format(now);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${weekday}, ${w.year}-${pad(w.month)}-${pad(w.day)}, ${pad(w.hour)}:${pad(w.minute)} (${timeZone})`;
+}

@@ -46,6 +46,13 @@ function fixture() {
         "List-Unsubscribe": "<mailto:leave@toolsweekly.example?subject=unsubscribe>",
       },
     },
+    {
+      id: "m5",
+      threadId: "t5",
+      labelIds: ["INBOX"],
+      snippet: "Invoice 2291 for $480 is due today. Please pay by 5 pm.",
+      headers: { From: "Accounting <ap@vendor.example>", Subject: "Invoice 2291 due today", Date: date(45) },
+    },
     // The user's own reply: the app must leave it out of the summary and
     // its count (lib/gmail.ts isReceived), even though this stand-in
     // ignores the search query and returns it.

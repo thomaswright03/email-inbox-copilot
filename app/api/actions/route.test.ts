@@ -181,6 +181,34 @@ describe("POST /api/actions", () => {
     expect(logAuditEvent).not.toHaveBeenCalled();
   });
 
+  it("snooze: changes nothing in Gmail and only records that it was used", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
+
+    const res = await POST(postRequest({ action: "snooze", messageId: "m1" }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    for (const change of [archiveMessage, unarchiveMessage, trashMessage, untrashMessage, getUnsubscribeHeaders]) {
+      expect(change).not.toHaveBeenCalled();
+    }
+    expect(logAuditEvent).toHaveBeenCalledWith({
+      userId: "gid-a@example.com",
+      action: "snooze",
+      messageId: "m1",
+      detail: "hidden in Inbox Buddy only",
+    });
+  });
+
+  it("snooze: takes nothing but the message id", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const res = await POST(postRequest({ action: "snooze", messageId: "m1", until: "2026-09-25T09:00:00Z" }));
+
+    expect(res.status).toBe(400);
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
   it("undo_archive: moves the message back to the inbox", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("a@example.com"));
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { localDay, localDayFrom, resolveTimeZone } from "../local-day";
+import { describeNow, localDay, localDayFrom, resolveTimeZone } from "../local-day";
 
 describe("resolveTimeZone", () => {
   it("accepts IANA zone names and falls back to UTC for anything else", () => {
@@ -39,5 +39,14 @@ describe("localDay", () => {
     const now = new Date("2026-09-24T02:00:00Z");
     expect(localDayFrom(new Request("http://localhost/api/emails/today?tz=America%2FLos_Angeles"), now).date).toBe("2026-09-23");
     expect(localDayFrom(new Request("http://localhost/api/emails/today"), now)).toMatchObject({ timeZone: "UTC", date: "2026-09-24" });
+  });
+});
+
+describe("describeNow", () => {
+  it("gives the model the user's own weekday, date, time and zone", () => {
+    const at = new Date("2026-09-24T02:05:00Z");
+    expect(describeNow("America/Los_Angeles", at)).toBe("Wednesday, 2026-09-23, 19:05 (America/Los_Angeles)");
+    expect(describeNow("Asia/Tokyo", at)).toBe("Thursday, 2026-09-24, 11:05 (Asia/Tokyo)");
+    expect(describeNow("UTC", at)).toBe("Thursday, 2026-09-24, 02:05 (UTC)");
   });
 });

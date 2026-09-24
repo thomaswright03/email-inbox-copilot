@@ -73,7 +73,7 @@ jobs:
         run: npm run build
 
       # Runs against `next start` with Google replaced by a minted session
-      # cookie and a local Gmail stand-in (playwright.config.ts).
+      # cookie and local Gmail and Gemini stand-ins (playwright.config.ts).
       - name: End-to-end tests
         run: npm run test:e2e
 

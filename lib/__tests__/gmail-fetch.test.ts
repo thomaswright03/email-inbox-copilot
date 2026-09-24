@@ -66,12 +66,12 @@ describe("fetchRecentMessages", () => {
     api.get.mockImplementation(async ({ id }: { id: string }) => metadata(id));
   });
 
-  it("reads the user's day since local midnight as metadata only, never message bodies", async () => {
+  it("reads the user's inbox since local midnight as metadata only, never message bodies", async () => {
     api.list.mockResolvedValue({ data: { messages: ids("m", 2), resultSizeEstimate: 2 } });
     const result = await fetchRecentMessages("tok", SINCE);
 
     expect(api.list).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "me", q: `after:${SINCE} -in:sent -in:drafts -in:chats` }),
+      expect.objectContaining({ userId: "me", q: `in:inbox after:${SINCE} -in:sent` }),
       { signal: expect.any(AbortSignal) }
     );
     for (const [args] of api.get.mock.calls) {
@@ -83,7 +83,7 @@ describe("fetchRecentMessages", () => {
     expect(result.emails[0]).toMatchObject({ threadId: "t-m0", from: "Sender m0 <m0@example.com>", isInInbox: true });
   });
 
-  it("covers received mail only: Sent, Drafts and Chats never reach the summary, the rule groups or the count", async () => {
+  it("covers received inbox mail only: Sent, Drafts and Chats never reach the summary, the rule groups or the count", async () => {
     // Even if the list returned them anyway, messages the user wrote are
     // dropped by their labels. A note to self (SENT + INBOX) is also left out.
     api.list.mockResolvedValue({ data: { messages: ids("m", 5), resultSizeEstimate: 5 } });
@@ -98,8 +98,8 @@ describe("fetchRecentMessages", () => {
 
     const result = await fetchRecentMessages("tok", SINCE);
 
+    expect(api.list.mock.calls[0][0].q).toMatch(/^in:inbox /);
     expect(api.list.mock.calls[0][0].q).toMatch(/-in:sent/);
-    expect(api.list.mock.calls[0][0].q).toMatch(/-in:drafts/);
     expect(result.emails.map((e) => e.id)).toEqual(["m0"]);
 
     const { ruleBasedGroups } = await import("../rules");
@@ -107,12 +107,18 @@ describe("fetchRecentMessages", () => {
     expect([...groups.toCheck, ...groups.bulk]).toEqual(["m0"]);
   });
 
-  it("keeps received mail the user already archived (no INBOX label)", async () => {
-    api.list.mockResolvedValue({ data: { messages: ids("m", 1), resultSizeEstimate: 1 } });
-    api.get.mockImplementation(async ({ id }: { id: string }) => metadata(id, { labels: ["CATEGORY_UPDATES"] }));
+  it("leaves out mail already archived, in Spam or in Trash, even if the list returned it", async () => {
+    api.list.mockResolvedValue({ data: { messages: ids("m", 4), resultSizeEstimate: 4 } });
+    const labels: Record<string, string[]> = {
+      m0: ["CATEGORY_UPDATES"],
+      m1: ["SPAM"],
+      m2: ["TRASH"],
+      m3: ["INBOX", "CATEGORY_PROMOTIONS"],
+    };
+    api.get.mockImplementation(async ({ id }: { id: string }) => metadata(id, { labels: labels[id] }));
     const result = await fetchRecentMessages("tok", SINCE);
-    expect(result.emails).toHaveLength(1);
-    expect(result.emails[0].isInInbox).toBe(false);
+    expect(result.emails.map((e) => e.id)).toEqual(["m3"]);
+    expect(result.emails[0].isInInbox).toBe(true);
   });
 
   it("leaves out a message deleted between the list and its read, instead of failing the load", async () => {

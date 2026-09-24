@@ -1,9 +1,9 @@
 // Scores the current prompts and model (lib/ai.ts) against the golden sets
 // by calling Gemini for real: `npm run eval`. It needs GEMINI_API_KEY and
 // GEMINI_PAID_TIER_PROJECT (paid tier only; see evals/README.md), from the
-// shell or .env.local. About 45 small model calls per run.
+// shell or .env.local. About 45 small triage calls per run.
 import { beforeAll, describe, expect, it } from "vitest";
-import { aiEnabled, classifySpam, MODEL, summarizeToday } from "@/lib/ai";
+import { aiEnabled, classifySpam, MODEL, triageToday } from "@/lib/ai";
 import { SPAM_CASES } from "./golden/spam";
 import { SUMMARY_FIXTURES } from "./golden/summary";
 import { formatSpamScore, MODEL_THRESHOLDS, scoreSpam, scoreSummaries, toParsedEmail, type SpamPrediction } from "./scoring";
@@ -19,8 +19,10 @@ describe(`${MODEL} against the golden sets`, () => {
 
   it("classifies spam well enough", async () => {
     const predictions = new Map<string, SpamPrediction>();
-    // One email per call, as in production (the heuristic pre-filter still
-    // decides which emails reach the model at all).
+    // Each case is triaged as the only email in its inbox, so the score is
+    // the verdict alone (in production the same triage call also sorts the
+    // briefing; the heuristic pre-filter still decides which emails can be
+    // flagged at all).
     for (const c of SPAM_CASES) {
       const [verdict] = await classifySpam([toParsedEmail(c)]);
       predictions.set(c.id, verdict ? { isSpam: verdict.isSpam, reason: verdict.reason } : { isSpam: false, reason: null });
@@ -37,9 +39,12 @@ describe(`${MODEL} against the golden sets`, () => {
   it("summarizes what matters, in the right language, without links or injected text", async () => {
     const summaries = new Map<string, string | null>();
     for (const f of SUMMARY_FIXTURES) {
-      const briefing = await summarizeToday(f.emails.map((e, i) => toParsedEmail(e, `${f.id}-${i}`)), f.language);
+      const triage = await triageToday(
+        f.emails.map((e, i) => toParsedEmail(e, `${f.id}-${i}`)),
+        { language: f.language, now: "Thursday, 2026-09-24, 09:30 (UTC)" }
+      );
       // Scored on the model's own words: each item's action line and date.
-      summaries.set(f.id, briefing ? briefing.map((item) => `${item.action} ${item.due}`).join("\n") : null);
+      summaries.set(f.id, triage ? triage.items.map((item) => `${item.action} ${item.due}`).join("\n") : null);
     }
     const score = scoreSummaries(SUMMARY_FIXTURES, summaries);
     console.log(

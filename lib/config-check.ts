@@ -9,6 +9,7 @@ export function productionConfigProblems(env: NodeJS.ProcessEnv = process.env): 
   }
   if (!env.ALLOWED_EMAILS?.trim()) problems.push("ALLOWED_EMAILS is empty, so nobody can sign in");
   if (env.GMAIL_API_ROOT_URL) problems.push("GMAIL_API_ROOT_URL is a test-only setting and must not be set");
+  if (env.GEMINI_API_ROOT_URL) problems.push("GEMINI_API_ROOT_URL is a test-only setting and must not be set");
   if (env.MIGRATION_DATABASE_URL) problems.push("MIGRATION_DATABASE_URL (the owner connection) must not be set at runtime");
   return problems;
 }

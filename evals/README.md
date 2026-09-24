@@ -50,9 +50,10 @@ model clears it comfortably.
 
 ## When to run it
 
-- Before merging any change to `lib/ai-prompts.ts` (the model id, both system instructions,
-  the prompt text and the spam response schema), the heuristic pre-filter in `lib/ai.ts`, or
-  `lib/rules.ts`.
+- Before merging any change to `lib/ai-prompts.ts` (the model id, the triage system
+  instruction, the prompt text and the response schema), the heuristic pre-filter in
+  `lib/ai.ts`, or `lib/rules.ts`. Both golden sets go through the same triage call as
+  production: each spam case is triaged as the only email in its inbox.
 - CI runs it for you: [`.github/workflows/model-eval.yml`](../.github/workflows/model-eval.yml)
   runs `npm run eval` on every pull request or push to `main` that touches
   `lib/ai-prompts.ts` or `evals/`, and every Monday, and fails when a score is below its

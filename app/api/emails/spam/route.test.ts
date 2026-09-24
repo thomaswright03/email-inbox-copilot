@@ -7,14 +7,15 @@ vi.mock("@/lib/gmail", async (importOriginal) => {
 });
 vi.mock("@/lib/ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/ai")>();
-  return { ...actual, classifyCandidates: vi.fn() };
+  return { ...actual, triageToday: vi.fn() };
 });
 vi.mock("@/lib/audit", () => ({ logAuditEvent: vi.fn() }));
 
 import { getGoogleSession } from "@/lib/session";
 import { fetchRecentMessages, type ParsedEmail } from "@/lib/gmail";
 import { markIgnored } from "@/lib/ignored";
-import { classifyCandidates, type SpamVerdict } from "@/lib/ai";
+import { triageToday, type SpamVerdict } from "@/lib/ai";
+import { GET as getToday } from "../today/route";
 import { logAuditEvent } from "@/lib/audit";
 import { GET } from "./route";
 
@@ -38,9 +39,9 @@ const EMAIL: ParsedEmail = {
   isInInbox: true,
 };
 
-// What classifyCandidates returns when every email got a usable answer.
+// What one triage call returns for these verdicts.
 function classified(verdicts: SpamVerdict[]) {
-  return { verdicts, checkedIds: verdicts.map((v) => v.id), attempted: verdicts.length, error: null };
+  return { items: verdicts.map((v) => ({ id: v.id, bucket: "noise" as const, action: "", due: "", dueDate: "" })), verdicts };
 }
 
 function inbox(emails: ParsedEmail[]) {
@@ -62,7 +63,7 @@ describe("GET /api/emails/spam", () => {
   it("builds flashcards only for messages classified as spam, and logs each one", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-1@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(classifyCandidates).mockResolvedValue(classified([{ id: "m1", isSpam: true, reason: "marketing" }]));
+    vi.mocked(triageToday).mockResolvedValue(classified([{ id: "m1", isSpam: true, reason: "marketing" }]));
 
     const res = await GET(getRequest());
     const body = await res.json();
@@ -90,7 +91,7 @@ describe("GET /api/emails/spam", () => {
   it("omits a message classified as not spam", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-2@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(classifyCandidates).mockResolvedValue(classified([{ id: "m1", isSpam: false, reason: "legitimate" }]));
+    vi.mocked(triageToday).mockResolvedValue(classified([{ id: "m1", isSpam: false, reason: "legitimate" }]));
 
     const res = await GET(getRequest());
     const body = await res.json();
@@ -102,7 +103,7 @@ describe("GET /api/emails/spam", () => {
   it("falls back to rule-based flags when Gemini classification fails", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-3@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(classifyCandidates).mockResolvedValue({ verdicts: [], checkedIds: [], attempted: 1, error: new Error("Gemini down") });
+    vi.mocked(triageToday).mockRejectedValue(new Error("Gemini down"));
 
     const res = await GET(getRequest());
     const body = await res.json();
@@ -125,12 +126,12 @@ describe("GET /api/emails/spam", () => {
   it("leaves out a message the user marked Not spam, even from a cached response", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-ignored@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(classifyCandidates).mockResolvedValue(classified([{ id: "m1", isSpam: true, reason: "marketing" }]));
+    vi.mocked(triageToday).mockResolvedValue(classified([{ id: "m1", isSpam: true, reason: "marketing" }]));
 
     expect((await (await GET(getRequest())).json()).flashcards).toHaveLength(1);
     await markIgnored("gid-int-spam-ignored@example.com", "m1");
     expect((await (await GET(getRequest())).json()).flashcards).toEqual([]);
-    expect(classifyCandidates).toHaveBeenCalledTimes(1);
+    expect(triageToday).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -139,7 +140,7 @@ describe("GET /api/emails/spam", () => {
   ])("describes how to unsubscribe for %s", async (_, headers, expected) => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor(`int-spam-unsub-${expected?.kind ?? "none"}@example.com`));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([{ ...EMAIL, ...headers }]));
-    vi.mocked(classifyCandidates).mockResolvedValue(classified([{ id: "m1", isSpam: true, reason: "marketing" }]));
+    vi.mocked(triageToday).mockResolvedValue(classified([{ id: "m1", isSpam: true, reason: "marketing" }]));
 
     const body = await (await GET(getRequest())).json();
 
@@ -149,12 +150,12 @@ describe("GET /api/emails/spam", () => {
   it("does not re-log classification events when a second request is served from cache", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-4@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
-    vi.mocked(classifyCandidates).mockResolvedValue(classified([{ id: "m1", isSpam: true, reason: "marketing" }]));
+    vi.mocked(triageToday).mockResolvedValue(classified([{ id: "m1", isSpam: true, reason: "marketing" }]));
 
     await GET(getRequest());
     await GET(getRequest());
 
-    expect(classifyCandidates).toHaveBeenCalledTimes(1);
+    expect(triageToday).toHaveBeenCalledTimes(1);
     expect(logAuditEvent).toHaveBeenCalledTimes(1);
   });
 
@@ -168,7 +169,7 @@ describe("GET /api/emails/spam", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(classifyCandidates).not.toHaveBeenCalled();
+    expect(triageToday).not.toHaveBeenCalled();
     expect(body.aiStatus).toBe("off");
     expect(body.flashcards).toHaveLength(1);
     expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "classified_spam", detail: "flagged by rules" }));
@@ -176,37 +177,43 @@ describe("GET /api/emails/spam", () => {
     expect(body.flashcards[0]).toMatchObject({ id: "m1", reason: "marketing" });
   });
 
-  it("checks every candidate with AI across loads: 20 per load, the rest on the next one, each only once", async () => {
+  it("checks every candidate in one triage call, and never asks again about a verdict it has", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-25@example.com"));
     const promos = Array.from({ length: 25 }, (_, i) => ({ ...EMAIL, id: `p${i}`, threadId: `tp${i}` }));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox(promos));
-    vi.mocked(classifyCandidates).mockImplementation(async (candidates) =>
-      classified(candidates.map((e) => ({ id: e.id, isSpam: true, reason: "marketing" as const })))
+    vi.mocked(triageToday).mockImplementation(async (emails) =>
+      classified(emails.map((e) => ({ id: e.id, isSpam: true, reason: "marketing" as const })))
     );
 
     const first = await (await GET(getRequest())).json();
-    expect(vi.mocked(classifyCandidates).mock.calls[0][0]).toHaveLength(20);
-    expect(first).toMatchObject({ aiStatus: "generated", unchecked: 5 });
-    expect(first.aiResetsAt).toBeUndefined();
-    expect(first.flashcards).toHaveLength(20);
+    expect(vi.mocked(triageToday).mock.calls[0][0]).toHaveLength(25);
+    expect(first).toMatchObject({ aiStatus: "generated" });
+    expect(first.flashcards).toHaveLength(25);
 
-    const second = await (await GET(new Request("http://localhost/api/emails/spam?refresh=1"))).json();
-    const secondBatch = vi.mocked(classifyCandidates).mock.calls[1][0].map((e) => e.id);
-    expect(secondBatch).toHaveLength(5);
-    expect(secondBatch.some((id) => first.flashcards.some((c: { id: string }) => c.id === id))).toBe(false);
-    expect(second.unchecked).toBeUndefined();
-    expect(second.flashcards).toHaveLength(25);
-
-    // Everything is checked now: another Refresh sends nothing to Gemini.
+    // Refresh with the same mail: every verdict is known, nothing is sent.
     await GET(new Request("http://localhost/api/emails/spam?refresh=1"));
-    expect(classifyCandidates).toHaveBeenCalledTimes(2);
+    expect(triageToday).toHaveBeenCalledTimes(1);
   });
 
-  it("with the default AI budget, 10 uncached loads in a day all get AI verdicts", async () => {
+  it("uses the summary's triage call instead of making its own", async () => {
+    vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-shared@example.com"));
+    vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));
+    vi.mocked(triageToday).mockResolvedValue(classified([{ id: "m1", isSpam: true, reason: "marketing" }]));
+
+    const [today, spamList] = await Promise.all([
+      getToday(new Request("http://localhost/api/emails/today?lang=fr")),
+      GET(new Request("http://localhost/api/emails/spam?lang=fr")),
+    ]);
+    expect((await today.json()).briefing).toHaveLength(1);
+    expect((await spamList.json()).flashcards.map((c: { id: string }) => c.id)).toEqual(["m1"]);
+    expect(triageToday).toHaveBeenCalledTimes(1);
+  });
+
+  it("with the default AI budget, 10 loads with new mail in a day all get AI verdicts", async () => {
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-spam-10loads@example.com"));
     let round = 0;
-    vi.mocked(classifyCandidates).mockImplementation(async (candidates) =>
-      classified(candidates.map((e) => ({ id: e.id, isSpam: true, reason: "marketing" as const })))
+    vi.mocked(triageToday).mockImplementation(async (emails) =>
+      classified(emails.map((e) => ({ id: e.id, isSpam: true, reason: "marketing" as const })))
     );
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
@@ -221,7 +228,7 @@ describe("GET /api/emails/spam", () => {
         expect(body.aiStatus).toBe("generated");
         expect(body.flashcards.map((c: { id: string }) => c.id)).toEqual(fresh.map((e) => e.id));
       }
-      expect(classifyCandidates).toHaveBeenCalledTimes(10);
+      expect(triageToday).toHaveBeenCalledTimes(10);
     } finally {
       vi.useRealTimers();
     }

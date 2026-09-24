@@ -33,6 +33,7 @@ function today(overrides: Partial<TodayPayload> = {}): TodayPayload {
     briefing: null,
     groups: { toCheck: ["m1"], bulk: ["m2"] },
     generatedAt: GENERATED_AT,
+    localDate: "2026-09-24",
     count: 2,
     truncated: false,
     totalEstimate: 2,
@@ -119,6 +120,7 @@ describe("Dashboard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     searchParams = new URLSearchParams();
+    window.localStorage.clear();
     vi.mocked(useSession).mockReturnValue({ data: null } as unknown as ReturnType<typeof useSession>);
   });
   afterEach(() => {
@@ -191,8 +193,8 @@ describe("Dashboard", () => {
             today({
               aiStatus: "generated",
               briefing: [
-                { id: "m1", bucket: "reply", action: "Ana wants comments on the [contract](https://evil.example)", due: "Thu" },
-                { id: "m2", bucket: "noise", action: "", due: "" },
+                { id: "m1", bucket: "reply", action: "Ana wants comments on the [contract](https://evil.example)", due: "Thu", dueDate: "" },
+                { id: "m2", bucket: "noise", action: "", due: "", dueDate: "" },
               ],
               groups: null,
             })
@@ -200,7 +202,9 @@ describe("Dashboard", () => {
       });
       renderDashboard();
       expect(await screen.findByText("Needs a reply (1)")).toBeTruthy();
-      expect(screen.getByText(/1 needs a reply/)).toBeTruthy();
+      // The bucket counts replace "N messages today".
+      expect(screen.getByText("1 needs a reply")).toBeTruthy();
+      expect(screen.queryByText(/messages today/)).toBeNull();
       // Model text is shown as text: never a link, image or markup.
       expect(screen.getByText("Ana wants comments on the [contract](https://evil.example)")).toBeTruthy();
       expect(document.querySelector('a[href="https://evil.example"]')).toBeNull();
@@ -215,13 +219,17 @@ describe("Dashboard", () => {
     it("Done archives the item, hides it, and Undo brings it back", async () => {
       mockApi({
         today: () =>
-          json(today({ aiStatus: "generated", briefing: [{ id: "m1", bucket: "reply", action: "Reply to Ana", due: "" }], groups: null })),
+          json(today({ aiStatus: "generated", briefing: [{ id: "m1", bucket: "reply", action: "Reply to Ana", due: "", dueDate: "" }], groups: null })),
       });
       renderDashboard();
       fireEvent.click(await screen.findByRole("button", { name: "Mark “Contract review” done and archive it" }));
       expect(await screen.findByText("Archived “Contract review”.")).toBeTruthy();
       expect(screen.queryByText("Reply to Ana")).toBeNull();
       expect(screen.getByText(/You're all caught up/)).toBeTruthy();
+      // The header counts what is left, without a reload.
+      expect(screen.queryByText("1 needs a reply")).toBeNull();
+      expect(screen.getByText("Nothing left to do")).toBeTruthy();
+      expect(screen.getByText("All messages (1)")).toBeTruthy();
 
       fireEvent.click(screen.getByRole("button", { name: "Undo" }));
       expect(await screen.findByText("Reply to Ana")).toBeTruthy();
@@ -234,7 +242,7 @@ describe("Dashboard", () => {
     it("keeps an item whose Done failed, and says why", async () => {
       mockApi({
         today: () =>
-          json(today({ aiStatus: "generated", briefing: [{ id: "m1", bucket: "fyi", action: "Contract notes", due: "" }], groups: null })),
+          json(today({ aiStatus: "generated", briefing: [{ id: "m1", bucket: "fyi", action: "Contract notes", due: "", dueDate: "" }], groups: null })),
         actions: () => json({ ok: false, code: "action_failed", error: "x" }, 502),
       });
       renderDashboard();
@@ -242,6 +250,166 @@ describe("Dashboard", () => {
       await waitFor(() => expect(screen.getByRole("button", { name: /done and archive it/ }).hasAttribute("disabled")).toBe(false));
       expect(screen.getByText("Contract notes")).toBeTruthy();
       expect(screen.queryByText(/Archived/)).toBeNull();
+    });
+
+    it("says what is due today in the user's zone, and counts it as a deadline today", async () => {
+      mockApi({
+        today: () =>
+          json(
+            today({
+              aiStatus: "generated",
+              briefing: [
+                { id: "m1", bucket: "reply", action: "Reply to Ana", due: "", dueDate: "" },
+                { id: "m2", bucket: "deadline", action: "Sale ends", due: "5 pm", dueDate: "2026-09-24" },
+              ],
+              groups: null,
+            })
+          ),
+      });
+      renderDashboard();
+      expect(await screen.findByText("1 needs a reply · 1 deadline today")).toBeTruthy();
+      expect(screen.getByText("Due today: 5 pm")).toBeTruthy();
+    });
+
+    describe("Snooze and Remind me", () => {
+      const KEY = "inbox-buddy.later.gid-1";
+      const BRIEFING = { aiStatus: "generated" as const, groups: null };
+      const reply = { id: "m1", bucket: "reply" as const, action: "Reply to Ana", due: "", dueDate: "" };
+      const stored = () => JSON.parse(window.localStorage.getItem(KEY) ?? "{}");
+      const seed = (entries: object) => window.localStorage.setItem(KEY, JSON.stringify(entries));
+
+      it("Snooze hides the item until the chosen time, changes nothing in Gmail, and Undo brings it back", async () => {
+        mockApi({ today: () => json(today({ ...BRIEFING, briefing: [reply] })) });
+        renderDashboard();
+        const snooze = await screen.findByRole("button", { name: "Snooze “Contract review”" });
+        fireEvent.click(snooze);
+        expect(snooze.getAttribute("aria-expanded")).toBe("true");
+        const menu = screen.getByRole("group", { name: "Snooze “Contract review” until" });
+        const choices = within(menu).getAllByRole("button");
+        expect(choices.map((b) => b.textContent)).toEqual([
+          expect.stringMatching(/^Later today/),
+          expect.stringMatching(/^Tomorrow morning/),
+          expect.stringMatching(/^Next week/),
+        ]);
+        expect(document.activeElement).toBe(choices[0]);
+        fireEvent.click(choices[1]);
+
+        expect(await screen.findByText(/^Snoozed “Contract review” until .+ nothing changed in Gmail\.$/)).toBeTruthy();
+        expect(screen.queryByText("Reply to Ana")).toBeNull();
+        expect(screen.getByText("Nothing left to do")).toBeTruthy();
+        expect(screen.getByText("Snoozed (1)")).toBeTruthy();
+        await waitFor(() => expect(actionCalls()).toEqual([{ action: "snooze", messageId: "m1" }]));
+        // Only ids and a time are kept in the browser, never the email itself.
+        expect(stored()).toEqual({ m1: { kind: "snooze", until: expect.any(Number), threadId: "t1" } });
+        expect(stored().m1.until).toBeGreaterThan(Date.now());
+        expect(window.localStorage.getItem(KEY)).not.toMatch(/Contract|Ana/);
+
+        fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+        expect(await screen.findByText("Reply to Ana")).toBeTruthy();
+        expect(window.localStorage.getItem(KEY)).toBeNull();
+      });
+
+      it("Escape closes the menu and puts focus back on its button", async () => {
+        mockApi({ today: () => json(today({ ...BRIEFING, briefing: [reply] })) });
+        renderDashboard();
+        const remind = await screen.findByRole("button", { name: "Remind me about “Contract review”" });
+        fireEvent.click(remind);
+        const menu = screen.getByRole("group", { name: "Remind me about “Contract review”" });
+        fireEvent.keyDown(within(menu).getAllByRole("button")[0], { key: "Escape" });
+        expect(screen.queryByRole("group", { name: "Remind me about “Contract review”" })).toBeNull();
+        expect(document.activeElement).toBe(remind);
+        expect(remind.getAttribute("aria-expanded")).toBe("false");
+      });
+
+      it("a snoozed item stays hidden after a reload until its time, and Show now brings it back", async () => {
+        seed({ m1: { kind: "snooze", until: Date.now() + 60 * 60 * 1000, threadId: "t1" } });
+        mockApi({ today: () => json(today({ ...BRIEFING, briefing: [reply] })) });
+        renderDashboard();
+        expect(await screen.findByText("Snoozed (1)")).toBeTruthy();
+        expect(screen.queryByText("Reply to Ana")).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "Show “Contract review” now" }));
+        expect(await screen.findByText("Reply to Ana")).toBeTruthy();
+        expect(screen.queryByText("Snoozed (1)")).toBeNull();
+      });
+
+      it("a snooze whose time has passed brings the item back, highlighted, until it is dismissed", async () => {
+        seed({ m1: { kind: "snooze", until: Date.now() - 1000, threadId: "t1" } });
+        mockApi({ today: () => json(today({ ...BRIEFING, briefing: [reply] })) });
+        renderDashboard();
+        expect(await screen.findByText("Reply to Ana")).toBeTruthy();
+        expect(screen.getByText("Back from snooze: “Contract review”")).toBeTruthy();
+        expect(screen.getByText("Reply to Ana").closest("li")?.getAttribute("data-due")).toBe("snooze");
+        fireEvent.click(screen.getByRole("button", { name: "Dismiss the reminder for “Contract review”" }));
+        await waitFor(() => expect(screen.queryByText(/Back from snooze/)).toBeNull());
+        expect(window.localStorage.getItem(KEY)).toBeNull();
+      });
+
+      it("Remind me keeps the item, asks once to allow notifications, and shows one when it comes due", async () => {
+        const shown: { title: string; body?: string }[] = [];
+        const requestPermission = vi.fn(async () => "granted");
+        class FakeNotification {
+          static permission = "default";
+          static requestPermission = requestPermission;
+          constructor(title: string, options?: { body?: string }) {
+            shown.push({ title, body: options?.body });
+          }
+        }
+        vi.stubGlobal("Notification", FakeNotification);
+        mockApi({ today: () => json(today({ ...BRIEFING, briefing: [reply] })) });
+        renderDashboard();
+        fireEvent.click(await screen.findByRole("button", { name: "Remind me about “Contract review”" }));
+        fireEvent.click(screen.getByRole("button", { name: /^Later today/ }));
+        expect(await screen.findByText(/^Reminder set for .+: “Contract review”\.$/)).toBeTruthy();
+        expect(screen.getByText("Reply to Ana")).toBeTruthy();
+        expect(requestPermission).toHaveBeenCalledTimes(1);
+        // Remind me doesn't touch the server at all.
+        expect(actionCalls()).toEqual([]);
+        expect(stored().m1).toMatchObject({ kind: "remind", threadId: "t1" });
+
+        // Its time comes (the page was away, and comes back into focus).
+        FakeNotification.permission = "granted";
+        seed({ m1: { ...stored().m1, until: Date.now() - 1000 } });
+        act(() => {
+          window.dispatchEvent(new StorageEvent("storage"));
+          window.dispatchEvent(new Event("focus"));
+        });
+        expect(await screen.findByText("Reminder: “Contract review”")).toBeTruthy();
+        await waitFor(() => expect(shown).toEqual([{ title: "Inbox Buddy reminder", body: "Ana Ruiz: Contract review" }]));
+        await waitFor(() => expect(stored().m1.notified).toBe(true));
+
+        // Done clears it.
+        fireEvent.click(screen.getByRole("button", { name: "Mark “Contract review” done and archive it" }));
+        await waitFor(() => expect(window.localStorage.getItem(KEY)).toBeNull());
+        expect(shown).toHaveLength(1);
+      });
+
+      it("a reminder for an email that isn't in today's list links it in Gmail by its thread", async () => {
+        seed({ old1: { kind: "remind", until: Date.now() - 1000, threadId: "tOld" } });
+        mockApi({ today: () => json(today({ ...BRIEFING, briefing: [reply] })) });
+        renderDashboard();
+        const banner = await screen.findByText("Reminder about an email from an earlier day.");
+        const link = within(banner.closest("li")!).getByRole("link", { name: /Open in Gmail/ });
+        expect(link.getAttribute("href")).toContain("#all/tOld");
+      });
+
+      it("works when the browser refuses local storage", async () => {
+        vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+          throw new Error("SecurityError");
+        });
+        vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+          throw new Error("SecurityError");
+        });
+        try {
+          mockApi({ today: () => json(today({ ...BRIEFING, briefing: [reply] })) });
+          renderDashboard();
+          fireEvent.click(await screen.findByRole("button", { name: "Snooze “Contract review”" }));
+          fireEvent.click(screen.getByRole("button", { name: /^Later today/ }));
+          await waitFor(() => expect(screen.queryByText("Reply to Ana")).toBeNull());
+          expect(screen.getByText("Snoozed (1)")).toBeTruthy();
+        } finally {
+          vi.restoreAllMocks();
+        }
+      });
     });
 
     it("says when today's AI budget is used up and when AI summaries come back", async () => {
@@ -267,7 +435,7 @@ describe("Dashboard", () => {
       await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).toBeTruthy());
       const urls = fetchMock.mock.calls.map(([u]) => String(u));
       expect(urls).toContain(`/api/emails/today?lang=en&${TZ}&refresh=1`);
-      expect(urls).toContain(`/api/emails/spam?${TZ}&refresh=1`);
+      expect(urls).toContain(`/api/emails/spam?lang=en&${TZ}&refresh=1`);
     });
 
     it("shows a plain sentence, not parser text, when the server answers with an HTML error page", async () => {
@@ -412,24 +580,13 @@ describe("Dashboard", () => {
       expect(screen.getByText(/Flagged by simple rules \(AI is off\)/)).toBeTruthy();
     });
 
-    it("says how many possible spam emails AI hasn't checked yet, and checks them on request", async () => {
-      mockApi({ spam: (_init, url) => json({ ...spam([ONE_CLICK]), ...(url?.includes("refresh=1") ? {} : { unchecked: 5 }) }) });
-      renderDashboard();
-      await openSpamTab();
-      expect(screen.getByText("5 more possible spam emails haven't been checked yet.")).toBeTruthy();
-      fireEvent.click(screen.getByRole("button", { name: "Check now" }));
-      await waitFor(() => expect(screen.queryByText(/haven't been checked yet/)).toBeNull());
-      expect(fetchMock.mock.calls.map(([u]) => String(u))).toContain(`/api/emails/spam?${TZ}&refresh=1`);
-    });
-
     it("when today's AI budget is used up, says so and when it comes back", async () => {
       const resetsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-      mockApi({ spam: () => json({ ...spam([ONE_CLICK]), unchecked: 2, aiResetsAt: resetsAt }) });
+      mockApi({ spam: () => json({ ...spam([ONE_CLICK], "budget"), aiResetsAt: resetsAt }) });
       renderDashboard();
       await openSpamTab();
-      const notice = screen.getByText(/2 more possible spam emails will be checked by AI at .+, when today's AI allowance resets\./);
-      expect(notice.textContent).not.toMatch(/\{time\}/);
-      expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
+      const caption = screen.getByText(/Today's AI allowance is used up, so simple rules are checking for spam until/);
+      expect(caption.textContent).not.toMatch(/\{time\}/);
     });
 
     it("shows the budget message on an empty rule-based list too", async () => {
@@ -607,7 +764,7 @@ describe("Dashboard", () => {
       expect(await screen.findByText("This email is no longer in your inbox. It may have been deleted or moved in Gmail.")).toBeTruthy();
       await waitFor(() => expect(screen.queryAllByRole("article")).toHaveLength(0));
       expect(within(card).queryByRole("alert")).toBeNull();
-      expect(fetchMock.mock.calls.map(([u]) => String(u))).toContain(`/api/emails/spam?${TZ}&refresh=1`);
+      expect(fetchMock.mock.calls.map(([u]) => String(u))).toContain(`/api/emails/spam?lang=en&${TZ}&refresh=1`);
     });
 
     it("a revoked Gmail grant during an action offers Reconnect Gmail on the card", async () => {

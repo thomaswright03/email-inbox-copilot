@@ -89,13 +89,13 @@ describe("when an upstream never answers", () => {
     generateContent.mockImplementation(never);
     let settled = false;
     const pending = getToday(new Request("http://localhost/api/emails/today")).finally(() => (settled = true));
-    await vi.advanceTimersByTimeAsync(GEMINI_TIMEOUT_MS.summary);
+    await vi.advanceTimersByTimeAsync(GEMINI_TIMEOUT_MS);
     expect(settled).toBe(true);
     const body = await (await pending).json();
     expect(body).toMatchObject({ aiStatus: "unavailable", briefing: null, groups: { toCheck: ["m1"], bulk: [] } });
   });
 
   it("the server gives up before the dashboard does", () => {
-    expect(GMAIL_READ_DEADLINE_MS + GEMINI_TIMEOUT_MS.summary).toBeLessThan(FETCH_TIMEOUT_MS);
+    expect(GMAIL_READ_DEADLINE_MS + GEMINI_TIMEOUT_MS).toBeLessThan(FETCH_TIMEOUT_MS);
   });
 });

@@ -27,6 +27,7 @@ describe("productionConfigProblems", () => {
     const problems = productionConfigProblems({
       AUTH_SECRET: "short",
       GMAIL_API_ROOT_URL: "http://127.0.0.1:1/",
+      GEMINI_API_ROOT_URL: "http://127.0.0.1:2/",
       MIGRATION_DATABASE_URL: "postgres://owner@db/inbox",
     } as unknown as NodeJS.ProcessEnv);
     expect(problems.join("\n")).toMatch(/AUTH_SECRET/);
@@ -34,6 +35,7 @@ describe("productionConfigProblems", () => {
     expect(problems.join("\n")).toMatch(/DATABASE_URL is required/);
     expect(problems.join("\n")).toMatch(/ALLOWED_EMAILS/);
     expect(problems.join("\n")).toMatch(/GMAIL_API_ROOT_URL/);
+    expect(problems.join("\n")).toMatch(/GEMINI_API_ROOT_URL/);
     expect(problems.join("\n")).toMatch(/MIGRATION_DATABASE_URL/);
   });
 });

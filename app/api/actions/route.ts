@@ -22,7 +22,7 @@ import { logError, logSecurityEvent } from "@/lib/log";
 // rejected before it reaches Gmail, the audit log, or a cache key.
 const ActionBodySchema = z
   .object({
-    action: z.enum(["delete", "unsubscribe", "ignore", "done", "undo_delete", "undo_archive", "undo_ignore"]),
+    action: z.enum(["delete", "unsubscribe", "ignore", "done", "snooze", "undo_delete", "undo_archive", "undo_ignore"]),
     messageId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
   })
   .strict();
@@ -89,6 +89,15 @@ export async function POST(req: Request) {
   const { action, messageId } = parsed.data;
   const { userId, accessToken } = session;
 
+  // Gmail has no snooze in its API, so Snooze lives in the dashboard: the
+  // browser hides the item until the chosen time and brings it back then
+  // (components/dashboard/later.ts). Nothing changes in Gmail and nothing
+  // about the item is stored here; the request is only recorded.
+  if (action === "snooze") {
+    await logAuditEvent({ userId, action: "snooze", messageId, detail: "hidden in Inbox Buddy only" });
+    return NextResponse.json({ ok: true });
+  }
+
   if (action === "ignore" || action === "undo_ignore") {
     try {
       if (action === "ignore") await markIgnored(userId, messageId);
@@ -120,6 +129,9 @@ export async function POST(req: Request) {
         ? { userId, action, messageId }
         : { userId, action: "undo", messageId, detail: action === "undo_delete" ? "restored from trash" : "moved back to inbox" }
     );
+    // The message list and the payloads built from it are re-read; the
+    // cached triage is kept (lib/triage.ts), so the next load makes no new
+    // model call for a message that only left or came back to the inbox.
     await invalidateUserInbox(userId);
     return NextResponse.json({ ok: true });
   }

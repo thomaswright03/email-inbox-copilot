@@ -14,7 +14,7 @@ vi.mock("@google/genai", () => ({
   },
 }));
 
-import { classifySpam, MODEL, summarizeToday } from "../ai";
+import { classifySpam, MODEL, triageToday } from "../ai";
 import type { ParsedEmail } from "../gmail";
 
 const EMAIL: ParsedEmail = {
@@ -28,6 +28,14 @@ const EMAIL: ParsedEmail = {
   listUnsubscribePost: null,
   isInInbox: true,
 };
+
+const NOW = { now: "Thursday, 2026-09-24, 09:00 (UTC)" };
+const briefingOf = async (emails: ParsedEmail[], language: "en" | "fr" = "en") =>
+  (await triageToday(emails, { ...NOW, language }))?.items ?? null;
+
+function reply(fields: Record<string, unknown>) {
+  return JSON.stringify({ items: [{ id: "e1", bucket: "fyi", action: "", due: "", dueDate: "", spam: false, spamReason: "legitimate", ...fields }] });
+}
 
 function usageLines(spy: ReturnType<typeof vi.spyOn>): Record<string, unknown>[] {
   return spy.mock.calls
@@ -47,11 +55,11 @@ describe("Gemini calls", () => {
   it("logs feature, model, tokens, latency and outcome for each call, without email content", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
     generateContent.mockResolvedValue({
-      text: '{"items":[{"id":"e1","bucket":"fyi","action":"One thing matters","due":""}]}',
+      text: reply({ action: "One thing matters" }),
       usageMetadata: { promptTokenCount: 120, candidatesTokenCount: 9 },
     });
 
-    expect(await summarizeToday([EMAIL], "fr")).toEqual([{ id: "m1", bucket: "fyi", action: "One thing matters", due: "" }]);
+    expect(await briefingOf([EMAIL], "fr")).toEqual([{ id: "m1", bucket: "fyi", action: "One thing matters", due: "", dueDate: "" }]);
     expect(constructed).toHaveBeenCalledTimes(1);
     expect(generateContent.mock.calls[0][0]).toMatchObject({
       model: MODEL,
@@ -60,7 +68,7 @@ describe("Gemini calls", () => {
     expect(generateContent.mock.calls[0][0].contents).toContain("in French");
 
     const [line] = usageLines(info);
-    expect(line).toMatchObject({ feature: "summary", model: MODEL, outcome: "ok", inputTokens: 120, outputTokens: 9 });
+    expect(line).toMatchObject({ feature: "triage", model: MODEL, outcome: "ok", inputTokens: 120, outputTokens: 9 });
     expect(typeof line.latencyMs).toBe("number");
     expect(JSON.stringify(info.mock.calls)).not.toMatch(/SECRET/);
     info.mockRestore();
@@ -72,16 +80,16 @@ describe("Gemini calls", () => {
       text: '{"items":[{"id":"e1","bucket":"reply","action":"Ana needs the contract',
       candidates: [{ finishReason: "MAX_TOKENS" }],
     });
-    expect(await summarizeToday([EMAIL])).toBeNull();
+    expect(await briefingOf([EMAIL])).toBeNull();
     expect(usageLines(info).map((l) => l.outcome)).toEqual(["truncated", "discarded"]);
     info.mockRestore();
   });
 
-  it("logs an empty answer and a discarded verdict as such", async () => {
+  it("logs an empty answer and a discarded one as such", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
     generateContent.mockResolvedValueOnce({ text: "" });
-    expect(await summarizeToday([EMAIL])).toBeNull();
-    generateContent.mockResolvedValueOnce({ text: '{"isSpam": true, "reason": "made-up"}' });
+    expect(await briefingOf([EMAIL])).toBeNull();
+    generateContent.mockResolvedValueOnce({ text: reply({ spam: true, spamReason: "made-up" }) });
     expect(await classifySpam([EMAIL])).toEqual([]);
     generateContent.mockResolvedValueOnce({ text: "not json" });
     expect(await classifySpam([EMAIL])).toEqual([]);
@@ -93,20 +101,20 @@ describe("Gemini calls", () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
     generateContent
       .mockRejectedValueOnce(Object.assign(new Error("unavailable"), { status: 503 }))
-      .mockResolvedValueOnce({ text: '{"isSpam": true, "reason": "marketing"}' });
+      .mockResolvedValueOnce({ text: reply({ bucket: "noise", spam: true, spamReason: "marketing" }) });
     expect(await classifySpam([EMAIL])).toEqual([{ id: "m1", isSpam: true, reason: "marketing" }]);
     expect(generateContent).toHaveBeenCalledTimes(2);
 
     generateContent.mockRejectedValue(Object.assign(new Error("bad key"), { status: 400 }));
-    await expect(summarizeToday([EMAIL])).rejects.toThrow("bad key");
-    expect(usageLines(info).at(-1)).toMatchObject({ feature: "summary", outcome: "error", error: "Error" });
+    await expect(briefingOf([EMAIL])).rejects.toThrow("bad key");
+    expect(usageLines(info).at(-1)).toMatchObject({ feature: "triage", outcome: "error", error: "Error" });
     info.mockRestore();
   });
 
   it("sends nothing when the paid tier isn't attested", async () => {
     vi.stubEnv("GEMINI_PAID_TIER_PROJECT", "");
     vi.spyOn(console, "info").mockImplementation(() => {});
-    await expect(summarizeToday([EMAIL])).rejects.toThrow(/disabled/);
+    await expect(briefingOf([EMAIL])).rejects.toThrow(/disabled/);
     expect(generateContent).not.toHaveBeenCalled();
     vi.unstubAllEnvs();
   });

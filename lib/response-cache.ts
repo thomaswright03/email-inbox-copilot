@@ -4,10 +4,13 @@ import type { LocalDay } from "./local-day";
 
 // Every per-user cache key starts with one of these, followed by the user's
 // stable Google account id — see userCacheKey() (and lib/verdict-cache.ts
-// for "verdicts").
+// for "verdicts"). "triage" is the model's answer for the day's inbox
+// (lib/triage.ts); it is not dropped when the mailbox changes, because an
+// email leaving the inbox doesn't change what the model said about the rest.
 const INBOX_KEY_KINDS = ["messages", "today", "spam"] as const;
-const USER_KEY_KINDS = [...INBOX_KEY_KINDS, "verdicts"] as const;
-export type UserCacheKind = (typeof INBOX_KEY_KINDS)[number];
+const CACHE_KINDS = [...INBOX_KEY_KINDS, "triage"] as const;
+const USER_KEY_KINDS = [...CACHE_KINDS, "verdicts"] as const;
+export type UserCacheKind = (typeof CACHE_KINDS)[number];
 
 // A LocalDay keys the entry to the user's own date and time zone, so it
 // rolls over at their midnight; a Date uses its UTC date.
@@ -27,23 +30,34 @@ const inflight = new Map<string, Promise<unknown>>();
 // calls `fetcher` on a full miss. Populates both layers on a miss so the
 // next request on *any* instance can skip straight to L1 or L2 instead of
 // re-hitting Gmail/Gemini.
-export async function getOrSetCached<T>(key: string, ttlMs: number, fetcher: () => Promise<T>): Promise<T> {
+//
+// `reuse` can turn down a cached value (it is then fetched again), and
+// `store` can keep a fetched value out of the cache (e.g. a failure that
+// should be retried on the next request).
+export async function getOrSetCached<T>(
+  key: string,
+  ttlMs: number,
+  fetcher: () => Promise<T>,
+  { reuse = () => true, store = () => true }: { reuse?: (value: T) => boolean; store?: (value: T) => boolean } = {}
+): Promise<T> {
   const memHit = getCached<T>(key);
-  if (memHit !== undefined) return memHit;
+  if (memHit !== undefined && reuse(memHit)) return memHit;
 
   const pending = inflight.get(key);
   if (pending) return pending as Promise<T>;
 
   const run = (async () => {
-    const dbHit = await getCachedDb<T>(key);
-    if (dbHit !== undefined) {
+    const dbHit = memHit === undefined ? await getCachedDb<T>(key) : undefined;
+    if (dbHit !== undefined && reuse(dbHit)) {
       setCached(key, dbHit, ttlMs);
       return dbHit;
     }
 
     const value = await fetcher();
-    setCached(key, value, ttlMs);
-    await setCachedDb(key, value, ttlMs);
+    if (store(value)) {
+      setCached(key, value, ttlMs);
+      await setCachedDb(key, value, ttlMs);
+    }
     return value;
   })();
 

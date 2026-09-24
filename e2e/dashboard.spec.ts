@@ -3,8 +3,9 @@ import { gmailChanges, signInAs } from "./session";
 
 // The main flow against the production build: a signed-in user who has
 // accepted the Terms reads the summary and works through the spam cards.
-// Gmail is the stand-in in e2e/gmail-stub.mjs (Ana's contract email plus
-// two bulk senders); AI is off, so the rule-based views are shown.
+// Gmail is the stand-in in e2e/gmail-stub.mjs (Ana's contract email, an
+// invoice and two bulk senders); AI is off, so the rule-based views are
+// shown. The AI briefing is covered in e2e/briefing.spec.ts.
 
 function watchErrors(page: Page): string[] {
   const problems: string[] = [];
@@ -25,10 +26,10 @@ test.describe("dashboard", () => {
     await signInAs(context);
     await page.goto("/");
 
-    await expect(page.getByText("3 messages today")).toBeVisible();
+    await expect(page.getByText("4 messages today")).toBeVisible();
     await expect(page.getByText(/^Updated \d/)).toBeVisible();
     await expect(page.getByText(/AI features are off/)).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Messages to check (1)" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Messages to check (2)" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Likely promotional or bulk (2)" })).toBeVisible();
     const link = page.getByRole("link", { name: "Open “Contract review before Friday” in Gmail" });
     await expect(link).toHaveAttribute("href", /mail\.google\.com\/mail\/\?authuser=tester%40example\.com#all\/t1$/);
@@ -175,7 +176,7 @@ test.describe("dashboard", () => {
     await expect(alert).toBeVisible({ timeout: 25_000 });
     await page.unroute("**/api/emails/today**");
     await alert.getByRole("button", { name: "Try again" }).click();
-    await expect(page.getByText("3 messages today")).toBeVisible();
+    await expect(page.getByText("4 messages today")).toBeVisible();
   });
 
   for (const [name, fail] of [
@@ -227,7 +228,7 @@ test.describe("dashboard", () => {
     await context.addCookies([{ name: "lang", value: "es", domain: "localhost", path: "/" }]);
     await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("lang", "es");
-    await expect(page.getByText("3 mensajes hoy")).toBeVisible();
+    await expect(page.getByText("4 mensajes hoy")).toBeVisible();
     await page.getByRole("tab", { name: /Tarjetas de spam/ }).click();
     await expect(page.getByRole("button", { name: "No es spam" })).toHaveCount(2);
   });

@@ -37,9 +37,11 @@ export function useInbox(locale: Locale) {
     [locale]
   );
 
+  // The language too, so the spam list shares the summary's triage call
+  // (lib/triage.ts) instead of asking the model again.
   const loadSpam = useCallback(async (refresh = false) => {
     const run = ++latest.current.spam;
-    const query = new URLSearchParams({ tz: timeZone(), ...(refresh ? { refresh: "1" } : {}) });
+    const query = new URLSearchParams({ lang: locale, tz: timeZone(), ...(refresh ? { refresh: "1" } : {}) });
     const result = await fetchJson<SpamPayload>(`/api/emails/spam?${query}`);
     if (run !== latest.current.spam) return;
     if (result.ok) {
@@ -48,7 +50,7 @@ export function useInbox(locale: Locale) {
     } else {
       setSpam({ status: "error", code: result.code });
     }
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     // Fetch-on-mount (and when the language changes); state is only set
@@ -79,14 +81,5 @@ export function useInbox(locale: Locale) {
     setRefreshing(false);
   }, [loadToday, loadSpam]);
 
-  // Asks the server to check the next batch of possible spam with AI (the
-  // ones already checked are cached there), keeping the list on screen.
-  const [checkingSpam, setCheckingSpam] = useState(false);
-  const checkMoreSpam = useCallback(async () => {
-    setCheckingSpam(true);
-    await loadSpam(true);
-    setCheckingSpam(false);
-  }, [loadSpam]);
-
-  return { today, spam, cards, setCards, refreshing, refresh, retryToday, retrySpam, checkingSpam, checkMoreSpam };
+  return { today, spam, cards, setCards, refreshing, refresh, retryToday, retrySpam };
 }

@@ -111,22 +111,21 @@ export function isInInbox(labelIds: string[]): boolean {
   return labelIds.includes("INBOX") && !labelIds.includes("SPAM");
 }
 
-// The dashboard covers mail the user *received* today, since their local
-// midnight (`after:` takes Unix seconds): anything they wrote (Sent,
-// including notes to self, and Drafts) and Chat messages are left out.
-// Received mail they already archived still counts toward the day's list,
-// because it arrived that day, but only mail still in the inbox is sorted
-// into the briefing (README "Which mail counts"). Gmail search already
-// skips Spam and Trash.
+// The dashboard covers mail the user *received* today that is still in
+// their inbox, since their local midnight (`after:` takes Unix seconds):
+// `in:inbox` leaves out mail already archived (dealt with), Spam, Trash,
+// drafts and Chat, and `-in:sent` leaves out anything they wrote themselves
+// (including notes to self, which land in the inbox too). See README
+// "Which mail counts".
 export function todaysMailQuery(sinceSeconds: number): string {
-  return `after:${Math.floor(sinceSeconds)} -in:sent -in:drafts -in:chats`;
+  return `in:inbox after:${Math.floor(sinceSeconds)} -in:sent`;
 }
 const NOT_RECEIVED_LABELS = ["SENT", "DRAFT", "CHAT"];
 
 // Belt and braces on top of the query: a message the list returns anyway
-// is dropped by its labels.
-function isReceived(labelIds: string[]): boolean {
-  return !labelIds.some((label) => NOT_RECEIVED_LABELS.includes(label));
+// is dropped by its labels unless it is received mail in the inbox.
+function isReceivedInInbox(labelIds: string[]): boolean {
+  return isInInbox(labelIds) && !labelIds.some((label) => NOT_RECEIVED_LABELS.includes(label));
 }
 
 const METADATA_HEADERS = ["From", "Subject", "Date", "List-Unsubscribe", "List-Unsubscribe-Post"];
@@ -200,7 +199,7 @@ export async function fetchRecentMessages(accessToken: string, sinceSeconds: num
   );
 
   const emails = messages
-    .filter((m): m is gmail_v1.Schema$Message => m !== null && isReceived(m.labelIds ?? []))
+    .filter((m): m is gmail_v1.Schema$Message => m !== null && isReceivedInInbox(m.labelIds ?? []))
     .map(parseMessage);
   return { emails, truncated, totalEstimate: Math.max(totalEstimate, emails.length) };
 }

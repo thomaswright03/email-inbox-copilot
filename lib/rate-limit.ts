@@ -26,15 +26,24 @@ export const RATE_LIMITS = {
   actions: { name: "actions", limit: envInt("RATE_LIMIT_ACTIONS_PER_MINUTE", 30), windowMs: MINUTE },
   // Gemini calls are only made on a cache miss; these cap what one account,
   // and the whole deployment, can spend in a day. Sizing (docs/deployment.md
-  // "AI budget"): a heavy user makes about 20 uncached loads a day (1
-  // summary call each, plus one per summary language) and gets at most ~100
-  // new spam candidates a day (each email is classified once, then its
-  // verdict is cached), so ~120 calls; the per-user default doubles that.
+  // "AI budget"): a dashboard load makes at most one call (the triage, which
+  // sorts the briefing and checks spam together), and only when new mail
+  // arrived or the cached triage expired; a heavy user makes about 60 such
+  // loads a day, plus one per summary language; the per-user default leaves
+  // room for four times that.
   // The deployment-wide default covers 20 such users with headroom. The
   // window is the UTC day (resets at 00:00 UTC).
   aiPerUser: { name: "ai-user", limit: envInt("AI_CALLS_PER_USER_PER_DAY", 250), windowMs: DAY, requireShared: true },
   aiGlobal: { name: "ai-global", limit: envInt("AI_CALLS_GLOBAL_PER_DAY", 3000), windowMs: DAY, requireShared: true },
 } satisfies Record<string, RateLimitRule>;
+
+// In production a requireShared rule is only counted in Postgres. The one
+// exception is a Gemini stand-in (GEMINI_API_ROOT_URL, end-to-end tests
+// only, flagged at startup in production): no real Gemini spend can happen,
+// so the budget may be counted in memory.
+function requiresSharedCounter(rule: RateLimitRule): boolean {
+  return rule.requireShared === true && process.env.NODE_ENV === "production" && !process.env.GEMINI_API_ROOT_URL;
+}
 
 export type RateLimitResult = { allowed: boolean; retryAfterSeconds: number };
 
@@ -85,7 +94,7 @@ export async function consumeRateLimit(rule: RateLimitRule, subject: string, cos
   const bucket = `${rule.name}:${subject}`;
   const retryAfterSeconds = Math.max(1, Math.ceil((windowStart + rule.windowMs - now) / 1000));
 
-  const sharedOnly = rule.requireShared === true && process.env.NODE_ENV === "production";
+  const sharedOnly = requiresSharedCounter(rule);
   const refuse = (): RateLimitResult => {
     logSecurityEvent("ai_budget_unavailable", { rule: rule.name });
     return { allowed: false, retryAfterSeconds: 60 };
@@ -135,7 +144,7 @@ function windowResetsAt(rule: RateLimitRule, now = Date.now()): Date {
 // required but can't be reached.
 async function adjustCounter(rule: RateLimitRule, subject: string, delta: number, windowStart: number): Promise<number | null> {
   const bucket = `${rule.name}:${subject}`;
-  const sharedOnly = rule.requireShared === true && process.env.NODE_ENV === "production";
+  const sharedOnly = requiresSharedCounter(rule);
   const sql = getSql();
   if (sql) {
     try {
