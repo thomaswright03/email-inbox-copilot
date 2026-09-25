@@ -1,5 +1,6 @@
 // A stand-in for the Gmail REST API, used only by the end-to-end tests.
-// The app under test is pointed at it with GMAIL_API_ROOT_URL (lib/gmail.ts).
+// The app under test is pointed at it with GMAIL_API_ROOT_URL, which the
+// app honours only with E2E_STAND_INS=1 (lib/stand-ins.ts).
 // Every access token gets its own copy of the inbox below, so tests don't
 // share state; the token "revoked" answers 401 like a revoked Google grant.
 //
@@ -45,6 +46,13 @@ function fixture() {
         Date: date(180),
         "List-Unsubscribe": "<mailto:leave@toolsweekly.example?subject=unsubscribe>",
       },
+    },
+    {
+      id: "m5",
+      threadId: "t5",
+      labelIds: ["INBOX"],
+      snippet: "Invoice 2291 for $480 is due today. Please pay by 5 pm.",
+      headers: { From: "Accounting <ap@vendor.example>", Subject: "Invoice 2291 due today", Date: date(45) },
     },
     // The user's own reply: the app must leave it out of the summary and
     // its count (lib/gmail.ts isReceived), even though this stand-in

@@ -22,7 +22,7 @@ import { logError, logSecurityEvent } from "@/lib/log";
 // rejected before it reaches Gmail, the audit log, or a cache key.
 const ActionBodySchema = z
   .object({
-    action: z.enum(["delete", "unsubscribe", "ignore", "undo_delete", "undo_archive", "undo_ignore"]),
+    action: z.enum(["delete", "unsubscribe", "ignore", "done", "snooze", "undo_delete", "undo_archive", "undo_ignore"]),
     messageId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
   })
   .strict();
@@ -89,6 +89,16 @@ export async function POST(req: Request) {
   const { action, messageId } = parsed.data;
   const { userId, accessToken } = session;
 
+  // Gmail has no snooze in its API, so Snooze lives in the dashboard: the
+  // browser hides the item until the chosen time and brings it back then
+  // (components/dashboard/later.ts). Nothing changes in Gmail and nothing
+  // about the item is stored here: the audit row records only that Snooze
+  // was used, without the message id (Privacy Policy sections 3 and 5).
+  if (action === "snooze") {
+    await logAuditEvent({ userId, action: "snooze", detail: "hidden in Inbox Buddy only" });
+    return NextResponse.json({ ok: true });
+  }
+
   if (action === "ignore" || action === "undo_ignore") {
     try {
       if (action === "ignore") await markIgnored(userId, messageId);
@@ -102,20 +112,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  if (action === "delete" || action === "undo_delete" || action === "undo_archive") {
+  // "done" is the briefing's Done button: it archives the message (removes
+  // it from the inbox), and undo_archive puts it back.
+  if (action === "delete" || action === "done" || action === "undo_delete" || action === "undo_archive") {
     const change =
       action === "delete"
         ? () => trashMessage(accessToken, messageId)
-        : action === "undo_delete"
-          ? () => untrashMessage(accessToken, messageId)
-          : () => unarchiveMessage(accessToken, messageId);
+        : action === "done"
+          ? () => archiveMessage(accessToken, messageId)
+          : action === "undo_delete"
+            ? () => untrashMessage(accessToken, messageId)
+            : () => unarchiveMessage(accessToken, messageId);
     const failed = await gmailChange(userId, `actions.${action}`, change, "Couldn't change this email in Gmail right now. Try again in a moment.");
     if (failed) return failed;
     await logAuditEvent(
-      action === "delete"
-        ? { userId, action: "delete", messageId }
+      action === "delete" || action === "done"
+        ? { userId, action, messageId }
         : { userId, action: "undo", messageId, detail: action === "undo_delete" ? "restored from trash" : "moved back to inbox" }
     );
+    // The message list and the payloads built from it are re-read; the
+    // cached triage is kept (lib/triage.ts), so the next load makes no new
+    // model call for a message that only left or came back to the inbox.
     await invalidateUserInbox(userId);
     return NextResponse.json({ ok: true });
   }

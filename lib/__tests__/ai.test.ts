@@ -62,7 +62,7 @@ describe("heuristicSpamScore", () => {
 describe("spam classification", () => {
   const promo = (id: string) => email({ id, subject: "50% off", listUnsubscribe: "<https://x.example/u>" });
 
-  it("offers every heuristic candidate for checking, strongest first (no per-load cut here)", async () => {
+  it("offers every heuristic candidate, strongest first", async () => {
     const { spamCandidates } = await import("../ai");
     const emails = [
       ...Array.from({ length: 30 }, (_, i) => promo(`p${i}`)),
@@ -72,41 +72,5 @@ describe("spam classification", () => {
     const candidates = spamCandidates(emails);
     expect(candidates).toHaveLength(31);
     expect(candidates[0].id).toBe("loud");
-  });
-
-  it("stops starting new batches once its time budget is spent, and reports the calls made", async () => {
-    const { __setModelForTests, classifyCandidates } = await import("../ai");
-    __setModelForTests(async () => {
-      await new Promise((r) => setTimeout(r, 5));
-      return JSON.stringify({ isSpam: true, reason: "marketing" });
-    });
-    try {
-      const result = await classifyCandidates(Array.from({ length: 12 }, (_, i) => promo(`p${i}`)), { timeBudgetMs: 0 });
-      // The first batch of 5 always runs; nothing after the budget.
-      expect(result).toMatchObject({ attempted: 5, error: null });
-      expect(result.checkedIds).toHaveLength(5);
-      expect(result.verdicts.every((v) => v.isSpam && v.reason === "marketing")).toBe(true);
-    } finally {
-      __setModelForTests(null);
-    }
-  });
-
-  it("reports a failed model call instead of throwing, with the calls already made", async () => {
-    const { __setModelForTests, classifyCandidates } = await import("../ai");
-    let n = 0;
-    __setModelForTests(async () => {
-      if (++n === 7) throw new Error("Gemini down");
-      return n === 2 ? "not json" : JSON.stringify({ isSpam: false, reason: "legitimate" });
-    });
-    try {
-      const result = await classifyCandidates(Array.from({ length: 12 }, (_, i) => promo(`p${i}`)));
-      expect(result.attempted).toBe(10);
-      expect(result.error).toBeInstanceOf(Error);
-      // The first batch finished: 5 checked, one of them with an unusable answer.
-      expect(result.checkedIds).toHaveLength(5);
-      expect(result.verdicts).toHaveLength(4);
-    } finally {
-      __setModelForTests(null);
-    }
   });
 });

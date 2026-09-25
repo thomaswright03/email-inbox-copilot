@@ -40,6 +40,32 @@ describe("AI spend budget", () => {
     expect(await reserveAiCalls("user-x", 1)).toMatchObject({ granted: 0, limitedBy: "unavailable" });
   });
 
+  it("still fails closed in production when only GEMINI_API_ROOT_URL is set (no end-to-end test mode)", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("DATABASE_URL", "");
+    vi.stubEnv("GEMINI_API_ROOT_URL", "http://127.0.0.1:4011");
+    vi.stubEnv("E2E_STAND_INS", "");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { reserveAiCalls } = await import("../rate-limit");
+    expect(await reserveAiCalls("user-x2", 1)).toMatchObject({ granted: 0, limitedBy: "unavailable" });
+  });
+
+  it("counts in memory in production only for the end-to-end tests' Gemini stand-in", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("DATABASE_URL", "");
+    vi.stubEnv("GEMINI_API_ROOT_URL", "http://127.0.0.1:4011");
+    vi.stubEnv("E2E_STAND_INS", "1");
+    vi.stubEnv("VERCEL", "");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { reserveAiCalls } = await import("../rate-limit");
+    expect(await reserveAiCalls("user-x3", 1)).toMatchObject({ granted: 1, limitedBy: null });
+    // On Vercel the test mode is refused, so the budget fails closed again.
+    vi.stubEnv("VERCEL", "1");
+    expect(await reserveAiCalls("user-x3", 1)).toMatchObject({ granted: 0, limitedBy: "unavailable" });
+  });
+
   it("grants what is left, gives the rest back, and says when it resets (UTC midnight)", async () => {
     vi.stubEnv("NODE_ENV", "test");
     vi.stubEnv("DATABASE_URL", "");

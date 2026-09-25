@@ -1,16 +1,28 @@
 import { getCached, setCached, invalidateCached, invalidateCachedByPrefix } from "./cache";
 import { getCachedDb, setCachedDb, invalidateCachedDb, invalidateCachedDbByPrefix } from "./db-cache";
+import type { LocalDay } from "./local-day";
+import { USER_KEY_KINDS } from "./user-key-kinds.mjs";
 
-// Every per-user cache key starts with one of these, followed by the user's
-// stable Google account id — see userCacheKey() (and lib/verdict-cache.ts
-// for "verdicts").
-const INBOX_KEY_KINDS = ["messages", "today", "spam"] as const;
-const USER_KEY_KINDS = [...INBOX_KEY_KINDS, "verdicts"] as const;
-export type UserCacheKind = (typeof INBOX_KEY_KINDS)[number];
+// Every per-user cache key starts with one of the kinds in
+// lib/user-key-kinds.mjs (USER_KEY_KINDS), followed by the user's stable
+// Google account id — see userCacheKey() (and lib/verdict-cache.ts for
+// "verdicts"). That one list also drives the sign-out purge below and the
+// operator's export/delete script (scripts/user-data.mjs). "triage" is the
+// model's answer for the day's inbox (lib/triage.ts); it is not dropped when
+// the mailbox changes, because an email leaving the inbox doesn't change
+// what the model said about the rest.
+//
+// Only kinds in the shared list can be written, so a new kind can't escape
+// the purge, export or deletion.
+export type UserCacheKind = Exclude<(typeof USER_KEY_KINDS)[number], "verdicts">;
+const INBOX_KEY_KINDS: readonly UserCacheKind[] = ["messages", "today", "spam"];
 
-export function userCacheKey(kind: UserCacheKind, userId: string, date = new Date(), variant?: string): string {
+// A LocalDay keys the entry to the user's own date and time zone, so it
+// rolls over at their midnight; a Date uses its UTC date.
+export function userCacheKey(kind: UserCacheKind, userId: string, day: LocalDay | Date = new Date(), variant?: string): string {
   if (!userId) throw new Error("userCacheKey requires a user id");
-  return `${kind}:${userId}:${date.toISOString().slice(0, 10)}${variant ? `:${variant}` : ""}`;
+  const dayKey = day instanceof Date ? day.toISOString().slice(0, 10) : `${day.date}:${day.timeZone}`;
+  return `${kind}:${userId}:${dayKey}${variant ? `:${variant}` : ""}`;
 }
 
 // Concurrent misses for the same key share one fetch, so a burst of parallel
@@ -23,23 +35,40 @@ const inflight = new Map<string, Promise<unknown>>();
 // calls `fetcher` on a full miss. Populates both layers on a miss so the
 // next request on *any* instance can skip straight to L1 or L2 instead of
 // re-hitting Gmail/Gemini.
-export async function getOrSetCached<T>(key: string, ttlMs: number, fetcher: () => Promise<T>): Promise<T> {
+//
+// `reuse` can turn down a cached value (it is then fetched again), `store`
+// can keep a fetched value out of the cache (e.g. a failure that should be
+// retried on the next request), and `ttl` can keep a fetched value for
+// less (or more) time than `ttlMs` (e.g. a failure kept only briefly).
+export async function getOrSetCached<T>(
+  key: string,
+  ttlMs: number,
+  fetcher: () => Promise<T>,
+  {
+    reuse = () => true,
+    store = () => true,
+    ttl = () => ttlMs,
+  }: { reuse?: (value: T) => boolean; store?: (value: T) => boolean; ttl?: (value: T) => number } = {}
+): Promise<T> {
   const memHit = getCached<T>(key);
-  if (memHit !== undefined) return memHit;
+  if (memHit !== undefined && reuse(memHit)) return memHit;
 
   const pending = inflight.get(key);
   if (pending) return pending as Promise<T>;
 
   const run = (async () => {
-    const dbHit = await getCachedDb<T>(key);
-    if (dbHit !== undefined) {
-      setCached(key, dbHit, ttlMs);
+    const dbHit = memHit === undefined ? await getCachedDb<T>(key) : undefined;
+    if (dbHit !== undefined && reuse(dbHit)) {
+      setCached(key, dbHit, ttl(dbHit));
       return dbHit;
     }
 
     const value = await fetcher();
-    setCached(key, value, ttlMs);
-    await setCachedDb(key, value, ttlMs);
+    if (store(value)) {
+      const keepFor = ttl(value);
+      setCached(key, value, keepFor);
+      await setCachedDb(key, value, keepFor);
+    }
     return value;
   })();
 

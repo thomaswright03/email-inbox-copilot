@@ -1,7 +1,8 @@
 # AI quality evals
 
-A small labelled golden set that checks the spam classifier and the daily summary
-whenever a prompt, the model id, or the rule-based fallback changes.
+A small labelled golden set that checks the spam verdicts, the briefing's buckets and
+due dates, and the briefing's text whenever a prompt, the model id, or the rule-based
+fallback changes.
 
 | Command | What it scores | Needs |
 |---|---|---|
@@ -20,6 +21,12 @@ No real email is used, and none may be added, because the eval sends it to Gemin
   person would give (`isSpam` plus one reason from `lib/spam-reasons.ts`). About a third are
   legitimate mail, several of which deliberately trip the spam keywords; cases marked
   `hard` are the ones a keyword filter gets wrong.
+- [`golden/buckets.ts`](golden/buckets.ts): inboxes for the Actionable Briefing, each email
+  labelled with the bucket a careful person would pick (Needs a reply, Has a deadline, FYI,
+  Noise; a list where more than one is reasonable) and whether the date it names is today at
+  the fixture's fixed local time. They include bills and appointments due today, deadlines
+  on other days (which must not be marked due today), an email that tries to re-sort the
+  others, and a Spanish inbox.
 - [`golden/summary.ts`](golden/summary.ts): small inboxes, each with the items a useful
   summary has to mention (any one word from each group counts) and text it must never
   contain: links, or instructions an email tried to inject. One fixture checks that a
@@ -34,6 +41,8 @@ No real email is used, and none may be added, because the eval sends it to Gemin
 | Spam recall (spam that gets flagged) | 75% | 50% |
 | Reason accuracy (right reason on caught spam) | 70% | 80% |
 | Summary coverage (must-mention items found) | 80% | n/a |
+| Briefing bucket accuracy (emails in an accepted bucket) | 80% | n/a |
+| Due-today accuracy (marked due today exactly when it is) | 90% | n/a |
 | Summary forbidden text | none | n/a |
 
 The rule floor sits just under its measured baseline (2026-09-24: accuracy 68.4%,
@@ -44,15 +53,19 @@ floor is 80%). The golden set was used to write those reason rules, so
 product needs; record the first real run's scores here, and raise a threshold when the
 model clears it comfortably.
 
-| Date | Model | Spam accuracy | Precision | Recall | Reason | Summary coverage | Run by |
-|---|---|---|---|---|---|---|---|
-| *(first run pending: needs the paid-tier key)* | | | | | | | |
+| Date | Model | Spam accuracy (single / mixed) | Precision | Recall | Reason | Summary coverage | Bucket | Due today | Run by |
+|---|---|---|---|---|---|---|---|---|---|
+| *(first run pending: needs the paid-tier key)* | | | | | | | | | |
 
 ## When to run it
 
-- Before merging any change to `lib/ai-prompts.ts` (the model id, both system instructions,
-  the prompt text and the spam response schema), the heuristic pre-filter in `lib/ai.ts`, or
-  `lib/rules.ts`.
+- Before merging any change to `lib/ai-prompts.ts` (the model id, the triage system
+  instruction, the prompt text and the response schema), the heuristic pre-filter in
+  `lib/ai.ts`, or `lib/rules.ts`. Every golden set goes through the same triage call as
+  production. The spam cases are scored twice against the same thresholds: once each as the
+  only email in its inbox, and once dealt into a few inboxes of at most 25 emails (one
+  production triage chunk) that each mix spam with legitimate mail, so a verdict has to
+  hold up next to other mail in one call. Each bucket inbox is one call too.
 - CI runs it for you: [`.github/workflows/model-eval.yml`](../.github/workflows/model-eval.yml)
   runs `npm run eval` on every pull request or push to `main` that touches
   `lib/ai-prompts.ts` or `evals/`, and every Monday, and fails when a score is below its
@@ -61,7 +74,7 @@ model clears it comfortably.
 - When Google announces a replacement for the pinned model id: run it against the new id
   first and switch only if it passes.
 
-`npm run eval` makes about 45 small Gemini calls (under 20k tokens in total). Each call
+`npm run eval` makes about 50 small Gemini calls (under 35k tokens in total). Each call
 also writes one `ai_usage` log line (feature, model, token counts, latency, outcome; never
 email content), the same line production writes for every model call.
 

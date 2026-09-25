@@ -5,15 +5,38 @@ import { SPAM_REASONS, type SpamReason } from "./spam-reasons";
 import { emit, toSafeError } from "./log";
 import { withRetry } from "./retry";
 import { withTimeout } from "./timeout";
-import { MODEL, SPAM_RESPONSE_SCHEMA, SPAM_SYSTEM_INSTRUCTION, spamPrompt, SUMMARY_SYSTEM_INSTRUCTION, summaryPrompt } from "./ai-prompts";
+import { standInUrl } from "./stand-ins";
+import {
+  BRIEFING_BUCKETS,
+  BRIEFING_BUCKETS_NO_DEADLINES,
+  MODEL,
+  TRIAGE_RESPONSE_SCHEMA,
+  TRIAGE_RESPONSE_SCHEMA_NO_DEADLINES,
+  TRIAGE_SYSTEM_INSTRUCTION,
+  TRIAGE_SYSTEM_INSTRUCTION_NO_DEADLINES,
+  triagePrompt,
+} from "./ai-prompts";
 
-export { MODEL };
+export { MODEL, BRIEFING_BUCKETS };
+
+// Google's Gemini API endpoint. It is always passed to the client
+// explicitly, with Vertex AI off, so no environment variable the SDK reads
+// by itself (GOOGLE_GEMINI_BASE_URL, GOOGLE_GENAI_USE_VERTEXAI) can send
+// GEMINI_API_KEY and Gmail data anywhere else.
+export const GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/";
 
 // Created on first use, so importing this module (builds, AI-off
 // deployments, tests) never constructs a client or warns about a missing key.
+// GEMINI_API_ROOT_URL points the client at a stand-in Gemini API for the
+// end-to-end tests (e2e/gemini-stub.mjs), and only in their explicit test
+// mode (lib/stand-ins.ts); anywhere else it is ignored.
 let client: GoogleGenAI | null = null;
 function gemini(): GoogleGenAI {
-  client ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  client ??= new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY,
+    vertexai: false,
+    httpOptions: { baseUrl: standInUrl("GEMINI_API_ROOT_URL") ?? GEMINI_API_BASE_URL },
+  });
   return client;
 }
 
@@ -29,6 +52,18 @@ export function aiEnabled(): boolean {
   return Boolean(process.env.GEMINI_API_KEY?.trim()) && Boolean(process.env.GEMINI_PAID_TIER_PROJECT?.trim());
 }
 
+// AI deadline detection (the "Has a deadline" bucket, dates and "Due today")
+// is off unless the deployment sets AI_DEADLINE_DETECTION=1. An AI-guessed
+// date is easy to over-rely on (for example as a court or filing deadline),
+// and detecting dates needs more data sent to Gemini: each email's Date
+// header and the user's local date, time and time zone. With it off, none of
+// those are sent, the model is given no deadline bucket, and no item carries
+// a date. Leave it off for any deployment serving law firms or other
+// regulated mailboxes (docs/deployment.md).
+export function deadlineDetectionEnabled(): boolean {
+  return process.env.AI_DEADLINE_DETECTION?.trim() === "1";
+}
+
 class AiDisabledError extends Error {
   constructor() {
     super("Gemini is disabled: GEMINI_PAID_TIER_PROJECT is not set");
@@ -41,11 +76,17 @@ type GenerateConfig = {
   responseMimeType?: string;
   responseJsonSchema?: unknown;
 };
-export type AiFeature = "summary" | "spam";
+// One model call per dashboard load: the triage (briefing + spam verdicts).
+export type AiFeature = "triage";
 // The model's text and why it stopped ("STOP", or "MAX_TOKENS" when it hit
 // maxOutputTokens mid-answer). A bare string is a reply that finished.
 type ModelReply = { text: string | undefined; finishReason?: string };
-type Generate = (prompt: string, config: GenerateConfig, feature: AiFeature) => Promise<ModelReply | string | undefined>;
+type Generate = (
+  prompt: string,
+  config: GenerateConfig,
+  feature: AiFeature,
+  options: { timeoutMs: number }
+) => Promise<ModelReply | string | undefined>;
 
 function asReply(reply: ModelReply | string | undefined): ModelReply {
   return typeof reply === "object" ? reply : { text: reply };
@@ -64,15 +105,27 @@ function logAiUsage(fields: {
   emit("info", { level: "ai_usage", model: MODEL, ...fields });
 }
 
-// How long one Gemini call may take, retries included: a timed-out call is
-// treated like any transient error and retried only while the budget
-// allows. A summary reads up to 100 emails; a spam check reads one.
-export const GEMINI_TIMEOUT_MS: Record<AiFeature, number> = { summary: 10_000, spam: 5_000 };
+// The day's inbox (up to 100 emails) is triaged in calls of at most this
+// many emails, made at the same time (lib/triage.ts), so each answer is
+// short enough to arrive quickly and a failed call only costs its own emails.
+export const TRIAGE_CHUNK_SIZE = 25;
 
-const geminiGenerate: Generate = async (prompt, config, feature) => {
+// How long one triage call may take, retries included: a timed-out call is
+// treated like any transient error and retried only while this allows. The
+// answer grows by a line per email, so the time does too: 10 s plus 200 ms
+// per email, at most GEMINI_TIMEOUT_MS (a full chunk of 25). The calls for
+// one load run concurrently, so the load waits at most GEMINI_TIMEOUT_MS.
+export const GEMINI_TIMEOUT_MS = 15_000;
+const GEMINI_BASE_TIMEOUT_MS = 10_000;
+const GEMINI_TIMEOUT_PER_EMAIL_MS = 200;
+
+export function triageTimeoutMs(emailCount: number): number {
+  return Math.min(GEMINI_TIMEOUT_MS, GEMINI_BASE_TIMEOUT_MS + GEMINI_TIMEOUT_PER_EMAIL_MS * Math.max(0, emailCount));
+}
+
+const geminiGenerate: Generate = async (prompt, config, feature, { timeoutMs }) => {
   if (!aiEnabled()) throw new AiDisabledError();
   const started = Date.now();
-  const timeoutMs = GEMINI_TIMEOUT_MS[feature];
   try {
     const response = await withRetry(
       () =>
@@ -110,7 +163,7 @@ export function __setModelForTests(fake: Generate | null): void {
 // stripped of control characters and angle brackets (so it can't close or
 // forge the <email> delimiters), and presented to the model as quoted data
 // under a system instruction that says so.
-const FIELD_LIMITS = { from: 200, subject: 300, snippet: 400 } as const;
+const FIELD_LIMITS = { from: 200, subject: 300, snippet: 400, date: 80 } as const;
 
 export function sanitizeForPrompt(value: string, maxLength: number): string {
   return value
@@ -121,10 +174,13 @@ export function sanitizeForPrompt(value: string, maxLength: number): string {
     .slice(0, maxLength);
 }
 
-function emailBlock(handle: string, e: ParsedEmail): string {
+// The Date header is included only with deadline detection on, so the
+// triage can work out dates; otherwise it isn't sent.
+function emailBlock(handle: string, e: ParsedEmail, deadlines: boolean): string {
   return [
     `<email id="${handle}">`,
     `From: ${sanitizeForPrompt(e.from, FIELD_LIMITS.from)}`,
+    ...(deadlines && e.date ? [`Received: ${sanitizeForPrompt(e.date, FIELD_LIMITS.date)}`] : []),
     `Subject: ${sanitizeForPrompt(e.subject, FIELD_LIMITS.subject)}`,
     `Preview: ${sanitizeForPrompt(e.snippet, FIELD_LIMITS.snippet)}`,
     `</email>`,
@@ -133,6 +189,12 @@ function emailBlock(handle: string, e: ParsedEmail): string {
 
 export const SUMMARY_LANGUAGES = { en: "English", es: "Spanish", fr: "French" } as const;
 export type SummaryLanguage = keyof typeof SUMMARY_LANGUAGES;
+
+// The language the briefing is written in: `?lang=` on the request, else English.
+export function languageFrom(req: Request): SummaryLanguage {
+  const lang = new URL(req.url).searchParams.get("lang");
+  return lang && lang in SUMMARY_LANGUAGES ? (lang as SummaryLanguage) : "en";
+}
 
 // Belt and braces on top of the system instruction: whatever the model
 // returns, links and images are reduced to their text before the summary
@@ -146,60 +208,177 @@ export function stripLinksAndImages(markdown: string): string {
     .replace(/[<>]/g, "");
 }
 
-const SUMMARY_MAX_OUTPUT_TOKENS = 1024;
+// Room for a line on each email in the call (up to TRIAGE_CHUNK_SIZE),
+// in any of the summary languages, plus the JSON around them.
+const TRIAGE_OUTPUT_TOKENS_PER_EMAIL = 128;
+const TRIAGE_OUTPUT_TOKENS_BASE = 256;
 
-// `incomplete`: the model stopped at SUMMARY_MAX_OUTPUT_TOKENS, so the
-// summary may leave out the last items. The unfinished last line is
-// dropped, and the dashboard says the summary was cut short (every message
-// is still listed under it).
-export type Summary = { text: string; incomplete: boolean };
-
-// Keeps the summary up to its last complete line (a half-written bullet
-// would read as if it were the whole point).
-function dropUnfinishedLine(text: string): string {
-  const lastBreak = text.trimEnd().lastIndexOf("\n");
-  return lastBreak > 0 ? text.slice(0, lastBreak) : text;
+export function triageMaxOutputTokens(emailCount: number): number {
+  return TRIAGE_OUTPUT_TOKENS_BASE + TRIAGE_OUTPUT_TOKENS_PER_EMAIL * Math.max(0, emailCount);
 }
 
-// Returns null when the model produced nothing usable; the caller then
-// falls back to the rule-based view.
-export async function summarizeToday(emails: ParsedEmail[], language: SummaryLanguage = "en"): Promise<Summary | null> {
-  if (emails.length === 0) return null;
-
-  const digest = emails.map((e, i) => emailBlock(`e${i + 1}`, e)).join("\n\n");
-
-  const reply = asReply(
-    await generate(
-      summaryPrompt(SUMMARY_LANGUAGES[language], digest),
-      { systemInstruction: SUMMARY_SYSTEM_INSTRUCTION, maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS },
-      "summary"
-    )
-  );
-  const incomplete = reply.finishReason === "MAX_TOKENS";
-  const text = reply.text && incomplete ? dropUnfinishedLine(reply.text) : reply.text;
-  const cleaned = text ? stripLinksAndImages(text).trim() : "";
-  return cleaned ? { text: cleaned, incomplete } : null;
+// The day's inbox split into the calls it takes to triage it, newest
+// emails first: ceil(n / TRIAGE_CHUNK_SIZE) calls, so at most 4 for the
+// 100 emails a load reads.
+export function triageChunks<T>(emails: T[]): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < emails.length; i += TRIAGE_CHUNK_SIZE) chunks.push(emails.slice(i, i + TRIAGE_CHUNK_SIZE));
+  return chunks;
 }
+
+export type BriefingBucket = (typeof BRIEFING_BUCKETS)[number];
+
+// One line of the briefing. `id` is always the id of an email that was sent
+// to the model, never one the model made up. `action` and `due` are model
+// output over attacker-written emails, shown as plain text only. `dueDate`
+// is the date the email names as YYYY-MM-DD in the user's time zone (or ""),
+// which is how the dashboard knows what is due today.
+export type BriefingItem = { id: string; bucket: BriefingBucket; action: string; due: string; dueDate: string };
 
 export type SpamVerdict = { id: string; isSpam: boolean; reason: SpamReason };
 
-const ModelVerdictSchema = z
+// What one triage call produces: a briefing item and a spam verdict for
+// each email that was sent.
+export type Triage = { items: BriefingItem[]; verdicts: SpamVerdict[] };
+
+const TEXT_LIMITS = { action: 160, due: 40 } as const;
+
+const ModelTriageItemSchema = z
   .object({
-    isSpam: z.boolean(),
-    reason: z.enum(SPAM_REASONS),
+    id: z.string(),
+    bucket: z.enum(BRIEFING_BUCKETS),
+    action: z.string(),
+    due: z.string(),
+    dueDate: z.string(),
+    spam: z.boolean(),
+    spamReason: z.enum(SPAM_REASONS),
   })
   .strict();
 
-// The model's output only ever drives a UI suggestion (a card the user still
-// has to click Delete/Unsubscribe/Ignore on themselves) — but it's still a
-// destructive-adjacent decision point, so anything that isn't exactly
-// {isSpam: boolean, reason: <one of SPAM_REASONS>} is discarded rather than
-// trusted. A verdict of "legitimate" can never be spam.
-export function parseModelVerdict(raw: unknown): { isSpam: boolean; reason: SpamReason } | null {
-  const parsed = ModelVerdictSchema.safeParse(raw);
-  if (!parsed.success) return null;
-  if (parsed.data.reason === "legitimate") return { isSpam: false, reason: "legitimate" };
-  return parsed.data;
+// Without deadline detection: no "deadline" bucket and no dates.
+const ModelTriageItemSchemaNoDeadlines = z
+  .object({
+    id: z.string(),
+    bucket: z.enum(BRIEFING_BUCKETS_NO_DEADLINES),
+    action: z.string(),
+    spam: z.boolean(),
+    spamReason: z.enum(SPAM_REASONS),
+  })
+  .strict();
+
+// A real calendar date as YYYY-MM-DD, or "" (the model's answer when the
+// email names no date, and what anything else is reduced to).
+const IsoDateSchema = z.iso.date();
+function cleanDueDate(value: string): string {
+  return IsoDateSchema.safeParse(value).success ? value : "";
+}
+
+// Model text shown on the dashboard: links, images and angle brackets are
+// removed, whitespace is collapsed, and the length is capped.
+function cleanModelText(value: string, maxLength: number): string {
+  return stripLinksAndImages(value).replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+const NOT_SPAM = { isSpam: false, reason: "legitimate" } as const;
+
+// Only a spam verdict with a spam reason counts; "legitimate" is never spam.
+function normalizeVerdict(isSpam: boolean, reason: SpamReason): { isSpam: boolean; reason: SpamReason } {
+  return isSpam && reason !== "legitimate" ? { isSpam, reason } : NOT_SPAM;
+}
+
+// Anything that isn't exactly the expected shape is dropped, one entry at a
+// time, so one malformed item doesn't cost the rest. Items are matched to
+// emails by the handle each email was sent under (`handles`); an unknown or
+// repeated handle is dropped. Emails the model left out are listed as FYI
+// and not spam, so nothing in the inbox silently disappears.
+//
+// All emails in a chunk share one call, so a spam flag is only honoured for
+// an email that cleared the heuristic pre-filter by itself (spamCandidates):
+// text planted in one email can't get an ordinary message flagged, and the
+// verdict only ever drives a card the user still has to act on.
+//
+// Without deadline detection (`deadlines` false) the answer must have the
+// no-deadline shape, and no item carries a date whatever the model says.
+export function parseTriage(
+  raw: unknown,
+  handles: Map<string, ParsedEmail>,
+  { deadlines = deadlineDetectionEnabled() }: { deadlines?: boolean } = {}
+): Triage | null {
+  if (typeof raw !== "object" || raw === null || !Array.isArray((raw as { items?: unknown }).items)) return null;
+  const byId = new Map<string, { item: BriefingItem; verdict: SpamVerdict }>();
+  for (const entry of (raw as { items: unknown[] }).items) {
+    const parsed = deadlines ? ModelTriageItemSchema.safeParse(entry) : ModelTriageItemSchemaNoDeadlines.safeParse(entry);
+    if (!parsed.success) continue;
+    const email = handles.get(parsed.data.id);
+    if (!email || byId.has(email.id)) continue;
+    const { bucket, action, spam, spamReason } = parsed.data;
+    const { due = "", dueDate = "" } = "due" in parsed.data ? parsed.data : {};
+    const verdict = heuristicSpamScore(email) >= 1 ? normalizeVerdict(spam, spamReason) : NOT_SPAM;
+    byId.set(email.id, {
+      item: {
+        id: email.id,
+        bucket,
+        action: bucket === "noise" ? "" : cleanModelText(action, TEXT_LIMITS.action),
+        due: cleanModelText(due, TEXT_LIMITS.due),
+        dueDate: cleanDueDate(dueDate),
+      },
+      verdict: { id: email.id, ...verdict },
+    });
+  }
+  if (byId.size === 0) return null;
+  // Newest first, the same order as the message list.
+  const emails = [...handles.values()];
+  return {
+    items: emails.map((e) => byId.get(e.id)?.item ?? { id: e.id, bucket: "fyi" as const, action: "", due: "", dueDate: "" }),
+    verdicts: emails.map((e) => byId.get(e.id)?.verdict ?? { id: e.id, ...NOT_SPAM }),
+  };
+}
+
+// One triage call: each email still in the inbox is sorted into reply /
+// deadline / fyi / noise with a one-line action and any date it names (or,
+// without deadline detection, reply / fyi / noise with no dates), and gets a
+// spam verdict, all in one JSON call. lib/triage.ts passes one chunk
+// (triageChunks) per call; the output limit and timeout scale with the
+// number of emails. `now` is the user's local date and time
+// (lib/local-day.ts describeNow), sent only with deadline detection on. Returns null when there is nothing to
+// sort or the model produced nothing usable; the caller then falls back to
+// the rule-based views for these emails. A reply cut off at the output
+// limit isn't valid JSON, so it is discarded like any other malformed answer.
+export async function triageToday(
+  emails: ParsedEmail[],
+  { language = "en", now }: { language?: SummaryLanguage; now?: string }
+): Promise<Triage | null> {
+  const inbox = emails.filter((e) => e.isInInbox);
+  if (inbox.length === 0) return null;
+
+  const deadlines = deadlineDetectionEnabled();
+  const handles = new Map(inbox.map((e, i) => [`e${i + 1}`, e]));
+  const digest = [...handles].map(([handle, e]) => emailBlock(handle, e, deadlines)).join("\n\n");
+
+  const { text } = asReply(
+    await generate(
+      triagePrompt(SUMMARY_LANGUAGES[language], deadlines ? (now ?? "an unspecified day") : null, digest),
+      {
+        systemInstruction: deadlines ? TRIAGE_SYSTEM_INSTRUCTION : TRIAGE_SYSTEM_INSTRUCTION_NO_DEADLINES,
+        responseMimeType: "application/json",
+        responseJsonSchema: deadlines ? TRIAGE_RESPONSE_SCHEMA : TRIAGE_RESPONSE_SCHEMA_NO_DEADLINES,
+        maxOutputTokens: triageMaxOutputTokens(inbox.length),
+      },
+      "triage",
+      { timeoutMs: triageTimeoutMs(inbox.length) }
+    )
+  );
+  if (!text) return null;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    logAiUsage({ feature: "triage", outcome: "discarded" });
+    return null;
+  }
+  const triage = parseTriage(raw, handles, { deadlines });
+  if (!triage) logAiUsage({ feature: "triage", outcome: "discarded" });
+  return triage;
 }
 
 const SPAM_KEYWORDS = [
@@ -226,9 +405,7 @@ export function heuristicSpamScore(email: ParsedEmail): number {
 }
 
 // The emails that could be spam: inbox messages that tripped the heuristic,
-// strongest signals first. Every one of them is checked by Gemini, at most
-// MAX_CLASSIFY_PER_LOAD per dashboard load; verdicts are cached per message
-// (lib/verdict-cache.ts), so the rest are checked on the next load.
+// strongest signals first. Only these can be flagged (parseTriage).
 export function spamCandidates(emails: ParsedEmail[]): ParsedEmail[] {
   return emails
     .filter((e) => e.isInInbox && heuristicSpamScore(e) >= 1)
@@ -237,91 +414,12 @@ export function spamCandidates(emails: ParsedEmail[]): ParsedEmail[] {
     .map(({ e }) => e);
 }
 
-// Bounds one load's model calls and how long the spam list waits for them.
-export const MAX_CLASSIFY_PER_LOAD = 20;
-const CLASSIFY_TIME_BUDGET_MS = 6_000;
-
-const CLASSIFY_CONCURRENCY = 5;
-
-// A classification that ran: the verdict, or null when the model's answer
-// was empty or malformed (the message is then not flagged).
-type Classified = { email: ParsedEmail; verdict: SpamVerdict | null };
-
-async function classifyOne(email: ParsedEmail): Promise<Classified> {
-  // A verdict cut off at the token limit isn't valid JSON, so it is
-  // discarded below like any other malformed answer.
-  const { text } = asReply(
-    await generate(
-      spamPrompt(emailBlock("e1", email)),
-      {
-        systemInstruction: SPAM_SYSTEM_INSTRUCTION,
-        responseMimeType: "application/json",
-        responseJsonSchema: SPAM_RESPONSE_SCHEMA,
-        maxOutputTokens: 128,
-      },
-      "spam"
-    )
-  );
-  if (!text) return { email, verdict: null };
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch {
-    logAiUsage({ feature: "spam", outcome: "discarded" });
-    return { email, verdict: null };
-  }
-  const verdict = parseModelVerdict(raw);
-  if (!verdict) logAiUsage({ feature: "spam", outcome: "discarded" });
-  // The verdict is attached to the id of the email that was sent, never to
-  // an id the model names, so one email can't change another's verdict.
-  return { email, verdict: verdict ? { id: email.id, ...verdict } : null };
-}
-
-export type ClassifyResult = {
-  // The usable verdicts.
-  verdicts: SpamVerdict[];
-  // Every email that was checked, including those whose answer was empty or
-  // malformed (they are not flagged, and not sent again).
-  checkedIds: string[];
-  // Model calls made (each one is charged to the AI budget).
-  attempted: number;
-  // Set when a model call failed; the caller falls back to the rules.
-  error: unknown;
-};
-
-// Each candidate is classified in its own model call, so an instruction
-// hidden in one email can only ever affect that email's own verdict. Calls
-// run CLASSIFY_CONCURRENCY at a time, and no new batch starts once
-// `timeBudgetMs` has passed: the emails left over are simply not checked
-// on this load.
-export async function classifyCandidates(
-  candidates: ParsedEmail[],
-  { timeBudgetMs = CLASSIFY_TIME_BUDGET_MS }: { timeBudgetMs?: number } = {}
-): Promise<ClassifyResult> {
-  const started = Date.now();
-  const verdicts: SpamVerdict[] = [];
-  const checkedIds: string[] = [];
-  let attempted = 0;
-  for (let i = 0; i < candidates.length; i += CLASSIFY_CONCURRENCY) {
-    if (i > 0 && Date.now() - started > timeBudgetMs) break;
-    const batch = candidates.slice(i, i + CLASSIFY_CONCURRENCY);
-    attempted += batch.length;
-    const settled = await Promise.allSettled(batch.map(classifyOne));
-    const failure = settled.find((r) => r.status === "rejected");
-    if (failure) return { verdicts, checkedIds, attempted, error: failure.reason };
-    for (const r of settled) {
-      if (r.status !== "fulfilled") continue;
-      checkedIds.push(r.value.email.id);
-      if (r.value.verdict) verdicts.push(r.value.verdict);
-    }
-  }
-  return { verdicts, checkedIds, attempted, error: null };
-}
-
-// Classifies every heuristic candidate among `emails` with no time limit
-// (the evals use this); throws if a model call fails.
-export async function classifySpam(emails: ParsedEmail[]): Promise<SpamVerdict[]> {
-  const result = await classifyCandidates(spamCandidates(emails), { timeBudgetMs: Infinity });
-  if (result.error) throw result.error;
-  return result.verdicts;
+// The spam verdicts one triage call gives the heuristic candidates among
+// `emails` (the evals use this; pass at most TRIAGE_CHUNK_SIZE emails, as
+// production does); throws if the model call fails.
+export async function classifySpam(emails: ParsedEmail[], now?: string): Promise<SpamVerdict[]> {
+  const candidates = new Set(spamCandidates(emails).map((e) => e.id));
+  if (candidates.size === 0) return [];
+  const triage = await triageToday(emails, { now });
+  return triage ? triage.verdicts.filter((v) => candidates.has(v.id)) : [];
 }
