@@ -81,6 +81,8 @@ export default defineConfig({
         GEMINI_API_KEY: "e2e-stand-in-key",
         GEMINI_PAID_TIER_PROJECT: "e2e-stand-in",
         GEMINI_API_ROOT_URL: `http://127.0.0.1:${GEMINI_STUB_PORT}`,
+        // e2e/briefing.spec.ts checks the deadline bucket and "Due today".
+        AI_DEADLINE_DETECTION: "1",
       },
     },
   ],

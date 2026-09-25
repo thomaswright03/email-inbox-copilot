@@ -191,10 +191,10 @@ describe("POST /api/actions", () => {
     for (const change of [archiveMessage, unarchiveMessage, trashMessage, untrashMessage, getUnsubscribeHeaders]) {
       expect(change).not.toHaveBeenCalled();
     }
+    // Only that Snooze was used: not which message (Privacy Policy section 3).
     expect(logAuditEvent).toHaveBeenCalledWith({
       userId: "gid-a@example.com",
       action: "snooze",
-      messageId: "m1",
       detail: "hidden in Inbox Buddy only",
     });
   });

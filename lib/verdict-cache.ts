@@ -1,6 +1,7 @@
 import { getCached, setCached } from "./cache";
 import { getCachedDb, setCachedDb } from "./db-cache";
 import type { SpamReason } from "./spam-reasons";
+import type { USER_KEY_KINDS } from "./user-key-kinds.mjs";
 
 // AI spam verdicts per Gmail message, kept for a little over a day (the
 // dashboard shows today's mail, since the user's local midnight), so the
@@ -16,7 +17,8 @@ type Stored = Record<string, CachedVerdict & { at: number }>;
 // The model id is part of the key, so switching models re-checks everything.
 export function verdictCacheKey(userId: string, model: string): string {
   if (!userId) throw new Error("verdictCacheKey requires a user id");
-  return `verdicts:${userId}:${model}`;
+  const kind: (typeof USER_KEY_KINDS)[number] = "verdicts";
+  return `${kind}:${userId}:${model}`;
 }
 
 async function read(key: string): Promise<Stored> {

@@ -210,11 +210,35 @@ describe("Dashboard", () => {
       expect(screen.getByText("Ana wants comments on the [contract](https://evil.example)")).toBeTruthy();
       expect(document.querySelector('a[href="https://evil.example"]')).toBeNull();
       expect(screen.getByText("Thu")).toBeTruthy();
+      // Every date is labelled as the AI's guess, with a no-reliance hint.
+      const guess = screen.getByText(/AI guess, check the email/);
+      expect(guess.getAttribute("title")).toMatch(/don't rely on it for court, filing or other legal deadlines/);
       // Noise is collapsed, and left out of the header counts.
       expect(screen.getByText("Noise (1)").closest("details")?.open).toBe(false);
       expect(screen.queryByText(/FYI/)).toBeNull();
       expect(screen.getByText(/AI-generated summary/)).toBeTruthy();
       expect(screen.getByText("All messages (2)")).toBeTruthy();
+    });
+
+    it("with only Noise left, the header says how many are collapsed there instead of an all-clear", async () => {
+      mockApi({
+        today: () =>
+          json(
+            today({
+              aiStatus: "generated",
+              briefing: [
+                { id: "m1", bucket: "reply", action: "Reply to Ana", due: "", dueDate: "" },
+                { id: "m2", bucket: "noise", action: "", due: "", dueDate: "" },
+              ],
+              groups: null,
+            })
+          ),
+      });
+      renderDashboard();
+      fireEvent.click(await screen.findByRole("button", { name: "Mark “Contract review” done and archive it" }));
+      expect(await screen.findByText("Nothing needs action outside Noise · 1 in Noise, check it")).toBeTruthy();
+      expect(screen.queryByText("Nothing left to do")).toBeNull();
+      expect(screen.getByText("Noise (1)")).toBeTruthy();
     });
 
     it("Done archives the item, hides it, and Undo brings it back", async () => {
@@ -377,7 +401,12 @@ describe("Dashboard", () => {
           window.dispatchEvent(new Event("focus"));
         });
         expect(await screen.findByText("Reminder: “Contract review”")).toBeTruthy();
-        await waitFor(() => expect(shown).toEqual([{ title: "Inbox Buddy reminder", body: "Ana Ruiz: Contract review" }]));
+        // The notification never names the sender or subject: the OS can
+        // show it on a lock screen or keep it in its history.
+        await waitFor(() =>
+          expect(shown).toEqual([{ title: "Inbox Buddy reminder", body: "An email you asked to be reminded about is due." }])
+        );
+        expect(JSON.stringify(shown)).not.toMatch(/Ana|Contract/);
         await waitFor(() => expect(stored().m1.notified).toBe(true));
 
         // Done clears it.

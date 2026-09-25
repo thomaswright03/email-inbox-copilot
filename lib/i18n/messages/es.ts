@@ -23,7 +23,7 @@ export const es: Messages = {
 
   "consent.title": "Antes de continuar",
   "consent.ai":
-    "Cuando las funciones de IA están activadas, el remitente, el asunto, la fecha y una vista previa breve de tus correos de hoy, junto con tu fecha, hora y zona horaria locales, se envían a la API Gemini de Google (nivel de pago, que Google no usa para mejorar sus productos) para organizar tu resumen y detectar spam. Cuando están desactivadas, no se envía nada a Gemini.",
+    "Cuando las funciones de IA están activadas, el remitente, el asunto y una vista previa breve de tus correos de hoy se envían a la API Gemini de Google (nivel de pago, que Google no usa para mejorar sus productos) para organizar tu resumen y detectar spam. La fecha de cada correo y tu fecha, hora y zona horaria locales solo se envían donde se ha activado la detección de plazos con IA, que está desactivada por defecto. Cuando las funciones de IA están desactivadas, no se envía nada a Gemini.",
   "consent.accuracy":
     "Los resúmenes y las marcas de spam pueden estar incompletos o ser incorrectos. Revisa siempre tu bandeja de entrada para todo lo urgente o importante.",
   "consent.actions":
@@ -97,8 +97,13 @@ export const es: Messages = {
   "briefing.count.deadlineMore_one": "{count} fecha límite más",
   "briefing.count.deadlineMore_other": "{count} fechas límite más",
   "briefing.countNone": "No queda nada por hacer",
+  "briefing.countNoneNoise_one": "Nada requiere acción fuera de Ruido · {count} en Ruido, revísalo",
+  "briefing.countNoneNoise_other": "Nada requiere acción fuera de Ruido · {count} en Ruido, revísalos",
   "briefing.dueToday": "Vence hoy",
   "briefing.dueTodayWith": "Vence hoy: {due}",
+  "briefing.dueGuess": "estimado por IA, revisa el correo",
+  "briefing.dueGuessHint":
+    "Esta fecha la ha extraído la IA y puede ser incorrecta o faltar. Compruébala en el propio correo. No es asesoramiento jurídico ni de calendario procesal: no la uses para plazos judiciales, de presentación u otros plazos legales.",
   "briefing.done": "Hecho",
   "briefing.doneHint": "Archivar este correo en Gmail (se puede seguir buscando)",
   "briefing.doneAria": "Marcar «{subject}» como hecho y archivarlo",

@@ -208,7 +208,12 @@ function BriefingRow({
         {(item.due || dueToday) && (
           <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-warning-soft px-1.5 py-0.5 text-xs text-warning">
             <Clock className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
-            {dueToday ? (item.due ? t("briefing.dueTodayWith", { due: item.due }) : t("briefing.dueToday")) : item.due}
+            <span>{dueToday ? (item.due ? t("briefing.dueTodayWith", { due: item.due }) : t("briefing.dueToday")) : item.due}</span>
+            {/* Dates are the AI's reading of the email (deadline detection
+                is off unless the deployment turns it on), so each one says so. */}
+            <span className="opacity-80" title={t("briefing.dueGuessHint")}>
+              · {t("briefing.dueGuess")}
+            </span>
           </p>
         )}
       </div>
@@ -455,7 +460,15 @@ export default function SummaryPanel({
   const snoozedToday = data?.briefing
     ? remaining.flatMap((email) => (snoozed.has(email.id) ? [{ email, until: later.entries[email.id].until }] : []))
     : [];
-  const headline = briefing && data ? briefingHeadline(briefingCounts(briefing, data.localDate), t) || t("briefing.countNone") : "";
+  // With nothing left outside Noise, the header still says how many Noise
+  // items are collapsed below: the sorting is the AI's guess, and a
+  // misfiled email may be among them.
+  const noiseLeft = briefing?.filter((item) => item.bucket === "noise").length ?? 0;
+  const headline =
+    briefing && data
+      ? briefingHeadline(briefingCounts(briefing, data.localDate), t) ||
+        (noiseLeft > 0 ? t("briefing.countNoneNoise", { count: noiseLeft }) : t("briefing.countNone"))
+      : "";
 
   return (
     <div>

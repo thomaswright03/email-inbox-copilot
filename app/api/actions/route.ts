@@ -92,9 +92,10 @@ export async function POST(req: Request) {
   // Gmail has no snooze in its API, so Snooze lives in the dashboard: the
   // browser hides the item until the chosen time and brings it back then
   // (components/dashboard/later.ts). Nothing changes in Gmail and nothing
-  // about the item is stored here; the request is only recorded.
+  // about the item is stored here: the audit row records only that Snooze
+  // was used, without the message id (Privacy Policy sections 3 and 5).
   if (action === "snooze") {
-    await logAuditEvent({ userId, action: "snooze", messageId, detail: "hidden in Inbox Buddy only" });
+    await logAuditEvent({ userId, action: "snooze", detail: "hidden in Inbox Buddy only" });
     return NextResponse.json({ ok: true });
   }
 

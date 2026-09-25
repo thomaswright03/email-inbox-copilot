@@ -46,9 +46,13 @@ card, confirm dialog and toast components beside it).
    chunk of 25 emails in the inbox (`triageChunks`; `ceil(n / 25)` calls, at most 4 for
    100 emails, made at the same time): `triageToday` is one JSON call over a chunk, each
    email under an opaque handle, with an output limit and timeout sized to the chunk, that
-   returns for every email its briefing bucket, one-line action, the date it
-   names (as written, and as `dueDate` YYYY-MM-DD worked out from the user's local date,
-   time and zone, which the prompt states) and a spam verdict with a fixed reason. It is
+   returns for every email its briefing bucket, one-line action and a spam verdict with a
+   fixed reason. Only with `AI_DEADLINE_DETECTION=1` (`deadlineDetectionEnabled`; off by
+   default) is there a "deadline" bucket and the date each email names (as written, and as
+   `dueDate` YYYY-MM-DD worked out from the user's local date, time and zone): only then does
+   the request carry each email's Date header and the user's local time
+   (`TRIAGE_SYSTEM_INSTRUCTION`); otherwise it carries neither and asks for no dates
+   (`TRIAGE_SYSTEM_INSTRUCTION_NO_DEADLINES`). The dashboard labels every date as an AI guess. It is
    validated entry by entry with Zod in `parseTriage`; a spam flag counts only for an email
    that cleared the heuristic pre-filter (`spamCandidates`) by itself. `lib/triage.ts`
    shares those calls between both routes: whichever asks first makes them, the other waits
@@ -77,11 +81,11 @@ card, confirm dialog and toast components beside it).
    untrashes, `undo_archive` moves the message back to the inbox, `undo_ignore` forgets the
    choice). A Gmail change drops the user's cached message list and payloads but keeps the
    cached triage (see 4). `snooze` changes nothing in Gmail (its API has no snooze) and
-   stores nothing: it only writes an audit row. Snooze and Remind me live in the dashboard
+   stores nothing: it only writes an audit row, without the message id. Snooze and Remind me live in the dashboard
    (`components/dashboard/later.ts`, `useLater.ts`): localStorage per account holds only the
    Gmail message and thread ids and a time; a snoozed item is hidden until then, and a due
-   snooze or reminder is highlighted (with a browser notification for a reminder when the
-   user allowed them, or a banner linking the thread in Gmail when the email is no longer in
+   snooze or reminder is highlighted (with a generic browser notification, "Inbox Buddy
+   reminder" with no sender or subject, for a reminder when the user allowed them, or a banner linking the thread in Gmail when the email is no longer in
    today's list). Nothing runs in the background: a snooze or reminder only comes due while
    an Inbox Buddy tab is open in that browser (or the next time one is opened), which the
    Remind me hint, its confirmation and the README say. Unsubscribe is done by the server

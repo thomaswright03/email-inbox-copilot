@@ -102,19 +102,17 @@ export default function Dashboard({
 
   // Snooze and Remind me (components/dashboard/later.ts). When one comes
   // due, a browser notification is shown if the user allowed them; the
-  // dashboard highlights it either way.
-  const todayData = inbox.today.status === "ready" ? inbox.today.data : null;
-  const todayLoading = inbox.today.status === "loading";
+  // dashboard highlights it either way. The notification is generic: it
+  // never names the sender or subject, because the operating system can show
+  // it on a lock screen and keep it in its notification history, outside
+  // Inbox Buddy (Privacy Policy section 3). The dashboard shows which email.
   const notifyDue = useCallback(
     (ids: string[]) => {
-      // Wait for today's list, so the notification can name the email.
-      if (todayLoading) return false;
       if (typeof Notification === "undefined" || Notification.permission !== "granted") return true;
       for (const id of ids) {
-        const email = todayData?.emails.find((e) => e.id === id);
         try {
           new Notification(t("later.notificationTitle"), {
-            body: email ? `${parseSender(email.from).name}: ${email.subject}` : t("later.notificationBody"),
+            body: t("later.notificationBody"),
             tag: `inbox-buddy-${id}`,
           });
         } catch {
@@ -124,7 +122,7 @@ export default function Dashboard({
       }
       return true;
     },
-    [todayData, todayLoading, t]
+    [t]
   );
   const later = useLater(accountId, notifyDue);
 

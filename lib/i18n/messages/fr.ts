@@ -23,7 +23,7 @@ export const fr: Messages = {
 
   "consent.title": "Avant de continuer",
   "consent.ai":
-    "Lorsque les fonctions d'IA sont activées, l'expéditeur, l'objet, la date et un court aperçu de vos e-mails du jour, ainsi que votre date, heure et fuseau horaire locaux, sont envoyés à l'API Gemini de Google (offre payante, que Google n'utilise pas pour améliorer ses produits) pour organiser votre résumé et repérer le spam. Lorsqu'elles sont désactivées, rien n'est envoyé à Gemini.",
+    "Lorsque les fonctions d'IA sont activées, l'expéditeur, l'objet et un court aperçu de vos e-mails du jour sont envoyés à l'API Gemini de Google (offre payante, que Google n'utilise pas pour améliorer ses produits) pour organiser votre résumé et repérer le spam. La date de chaque e-mail et votre date, heure et fuseau horaire locaux ne sont envoyés que là où la détection des échéances par IA a été activée, ce qui n'est pas le cas par défaut. Lorsque les fonctions d'IA sont désactivées, rien n'est envoyé à Gemini.",
   "consent.accuracy":
     "Les résumés et les signalements de spam peuvent être incomplets ou erronés. Vérifiez toujours votre boîte de réception pour tout ce qui est urgent ou important.",
   "consent.actions":
@@ -97,8 +97,13 @@ export const fr: Messages = {
   "briefing.count.deadlineMore_one": "{count} autre échéance",
   "briefing.count.deadlineMore_other": "{count} autres échéances",
   "briefing.countNone": "Plus rien à faire",
+  "briefing.countNoneNoise_one": "Rien à traiter hors Bruit · {count} dans Bruit, vérifiez-le",
+  "briefing.countNoneNoise_other": "Rien à traiter hors Bruit · {count} dans Bruit, vérifiez-les",
   "briefing.dueToday": "Pour aujourd'hui",
   "briefing.dueTodayWith": "Pour aujourd'hui : {due}",
+  "briefing.dueGuess": "estimation de l'IA, vérifiez l'e-mail",
+  "briefing.dueGuessHint":
+    "Cette date a été repérée par l'IA et peut être erronée ou manquer. Vérifiez-la dans l'e-mail lui-même. Ce n'est pas un conseil juridique ni un outil de suivi des délais : ne vous y fiez pas pour les délais judiciaires, de dépôt ou autres délais légaux.",
   "briefing.done": "Fait",
   "briefing.doneHint": "Archiver cet e-mail dans Gmail (il reste consultable par recherche)",
   "briefing.doneAria": "Marquer « {subject} » comme fait et l'archiver",

@@ -14,8 +14,9 @@ marked for attorney review before publication.
 
 ## 1. Gemini tier (AI processing of Gmail data)
 
-Gmail-derived data (sender, subject, snippet and the Date header of today's inbox
-messages, with the user's local date, time and time zone) may be sent only to Gemini under Google's
+Gmail-derived data (sender, subject and snippet of today's inbox messages; with
+`AI_DEADLINE_DETECTION=1` only, also their Date header and the user's local date, time and
+time zone) may be sent only to Gemini under Google's
 **paid** API terms, where Google does not use prompts or responses to improve its
 products. The code enforces this: AI is off, and nothing is sent to Gemini, unless
 `GEMINI_PAID_TIER_PROJECT` is set (`lib/ai.ts`, `aiEnabled`). Setting it is the
@@ -37,7 +38,7 @@ spam list).
 | Vendor | Receives | Terms / DPA | Accepted on |
 |---|---|---|---|
 | Google (Gmail API, OAuth) | OAuth tokens; Gmail metadata requests | Google API Services User Data Policy; Google Workspace API User Data and Developer Policy | **NEEDS THOMAS** |
-| Google (Gemini API, paid) | Sender, subject, snippet, Date header; the user's local date, time and time zone (only with AI on) | Gemini API Additional Terms (paid services); Google Cloud Data Processing Addendum | **NEEDS THOMAS** |
+| Google (Gemini API, paid) | Sender, subject, snippet (only with AI on); Date header and the user's local date, time and time zone only with `AI_DEADLINE_DETECTION=1` too (off by default) | Gemini API Additional Terms (paid services); Google Cloud Data Processing Addendum | **NEEDS THOMAS** |
 | Vercel Inc. | All requests; runtime logs with Google account ids | Vercel DPA (vercel.com/legal/dpa) | **NEEDS THOMAS** |
 | Neon Inc. | Database: encrypted 5-minute cache and 26-hour spam-verdict cache, audit log, consent records, session versions, Not spam choices, rate-limit counters | Neon DPA (neon.tech/dpa) | **NEEDS THOMAS** |
 | Alert webhook (Slack/Discord), optional | Event names only, no personal data | n/a | n/a |
@@ -95,8 +96,11 @@ Changing any of these requires the same change in the Privacy Policy section 5 a
 
 ## 6. Superseded records
 
-- `docs/risk-acceptance-gemini-free-tier.md`: superseded 2026-09-24, never signed (its PDF
-  copy was removed; it remains in git history). Replaced by section 1 above.
+- The Gemini free-tier risk acceptance memo (formerly
+  `docs/risk-acceptance-gemini-free-tier.md`): superseded 2026-09-24, never signed, and
+  removed from `docs/` so it can't be mistaken for a current record (it and its PDF copy
+  remain in git history only). It is not the basis for anything. Replaced by section 1
+  above.
 
 ## 7. Sign-off
 

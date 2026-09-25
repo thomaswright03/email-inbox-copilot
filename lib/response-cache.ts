@@ -1,16 +1,21 @@
 import { getCached, setCached, invalidateCached, invalidateCachedByPrefix } from "./cache";
 import { getCachedDb, setCachedDb, invalidateCachedDb, invalidateCachedDbByPrefix } from "./db-cache";
 import type { LocalDay } from "./local-day";
+import { USER_KEY_KINDS } from "./user-key-kinds.mjs";
 
-// Every per-user cache key starts with one of these, followed by the user's
-// stable Google account id — see userCacheKey() (and lib/verdict-cache.ts
-// for "verdicts"). "triage" is the model's answer for the day's inbox
-// (lib/triage.ts); it is not dropped when the mailbox changes, because an
-// email leaving the inbox doesn't change what the model said about the rest.
-const INBOX_KEY_KINDS = ["messages", "today", "spam"] as const;
-const CACHE_KINDS = [...INBOX_KEY_KINDS, "triage"] as const;
-const USER_KEY_KINDS = [...CACHE_KINDS, "verdicts"] as const;
-export type UserCacheKind = (typeof CACHE_KINDS)[number];
+// Every per-user cache key starts with one of the kinds in
+// lib/user-key-kinds.mjs (USER_KEY_KINDS), followed by the user's stable
+// Google account id — see userCacheKey() (and lib/verdict-cache.ts for
+// "verdicts"). That one list also drives the sign-out purge below and the
+// operator's export/delete script (scripts/user-data.mjs). "triage" is the
+// model's answer for the day's inbox (lib/triage.ts); it is not dropped when
+// the mailbox changes, because an email leaving the inbox doesn't change
+// what the model said about the rest.
+//
+// Only kinds in the shared list can be written, so a new kind can't escape
+// the purge, export or deletion.
+export type UserCacheKind = Exclude<(typeof USER_KEY_KINDS)[number], "verdicts">;
+const INBOX_KEY_KINDS: readonly UserCacheKind[] = ["messages", "today", "spam"];
 
 // A LocalDay keys the entry to the user's own date and time zone, so it
 // rolls over at their midnight; a Date uses its UTC date.

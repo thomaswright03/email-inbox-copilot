@@ -1,4 +1,4 @@
-import { MODEL, triageChunks, triageToday, type BriefingItem, type SpamVerdict, type SummaryLanguage, type Triage } from "./ai";
+import { deadlineDetectionEnabled, MODEL, triageChunks, triageToday, type BriefingItem, type SpamVerdict, type SummaryLanguage, type Triage } from "./ai";
 import type { ParsedEmail } from "./gmail";
 import { INBOX_CACHE_TTL_MS } from "./inbox";
 import { describeNow, type LocalDay } from "./local-day";
@@ -59,7 +59,7 @@ function complete(outcome: TriageOutcome): boolean {
 
 // One chunk's call. Any failure is logged and becomes null, so it costs only
 // this chunk's emails, not the page.
-async function triageChunk(chunk: ParsedEmail[], language: SummaryLanguage, now: string): Promise<Triage | null> {
+async function triageChunk(chunk: ParsedEmail[], language: SummaryLanguage, now: string | undefined): Promise<Triage | null> {
   try {
     return await triageToday(chunk, { language, now });
   } catch (err) {
@@ -79,7 +79,8 @@ async function runTriage(userId: string, day: LocalDay, language: SummaryLanguag
     // views, and the user is told when AI comes back.
     return grant.limitedBy === "budget" ? { aiStatus: "budget", aiResetsAt: grant.resetsAt } : { aiStatus: "unavailable" };
   }
-  const now = describeNow(day.timeZone);
+  // The user's local time goes to the model only for deadline detection.
+  const now = deadlineDetectionEnabled() ? describeNow(day.timeZone) : undefined;
   // Newest mail first, so if the budget only has room for some of the
   // calls, it is the newest emails that the model sorts.
   const answers = await Promise.all(chunks.map((chunk, i) => (i < grant.granted ? triageChunk(chunk, language, now) : null)));
@@ -115,7 +116,10 @@ export async function triageInbox(
   emails: ParsedEmail[]
 ): Promise<TriageOutcome> {
   const inbox = emails.filter((e) => e.isInInbox);
-  return getOrSetCached(userCacheKey("triage", userId, day, language), INBOX_CACHE_TTL_MS, () => runTriage(userId, day, language, inbox), {
+  // Keyed by whether deadline detection is on too, so switching it never
+  // reuses an answer made the other way.
+  const variant = deadlineDetectionEnabled() ? language : `${language}:no-deadlines`;
+  return getOrSetCached(userCacheKey("triage", userId, day, variant), INBOX_CACHE_TTL_MS, () => runTriage(userId, day, language, inbox), {
     reuse: (cached) => cached.aiStatus === "unavailable" || covers(cached, inbox),
     // An exhausted budget is checked again on the next load; it costs no call.
     store: (fresh) => fresh.aiStatus !== "budget",

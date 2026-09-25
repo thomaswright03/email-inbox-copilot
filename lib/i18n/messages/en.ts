@@ -24,7 +24,7 @@ export const en = {
 
   "consent.title": "Before you continue",
   "consent.ai":
-    "When AI features are on, the sender, subject, date and a short preview of today's emails, and your local date, time and time zone, are sent to Google's Gemini API (paid tier, which Google doesn't use to improve its products) to sort your briefing and flag spam. When they are off, nothing is sent to Gemini.",
+    "When AI features are on, the sender, subject and a short preview of today's emails are sent to Google's Gemini API (paid tier, which Google doesn't use to improve its products) to sort your briefing and flag spam. Each email's date and your local date, time and time zone are sent too only where AI deadline detection has been turned on, which it is not by default. When AI features are off, nothing is sent to Gemini.",
   "consent.accuracy":
     "Summaries and spam flags can be incomplete or wrong. Always check your inbox directly for anything time-sensitive or important.",
   "consent.actions":
@@ -96,8 +96,13 @@ export const en = {
   "briefing.count.deadlineMore_one": "{count} more deadline",
   "briefing.count.deadlineMore_other": "{count} more deadlines",
   "briefing.countNone": "Nothing left to do",
+  "briefing.countNoneNoise_one": "Nothing needs action outside Noise · {count} in Noise, check it",
+  "briefing.countNoneNoise_other": "Nothing needs action outside Noise · {count} in Noise, check them",
   "briefing.dueToday": "Due today",
   "briefing.dueTodayWith": "Due today: {due}",
+  "briefing.dueGuess": "AI guess, check the email",
+  "briefing.dueGuessHint":
+    "This date was picked out by AI and can be wrong or missing. Check the email itself. Not legal or docketing advice: don't rely on it for court, filing or other legal deadlines.",
   "briefing.done": "Done",
   "briefing.doneHint": "Archive this email in Gmail (it stays searchable)",
   "briefing.doneAria": "Mark “{subject}” done and archive it",

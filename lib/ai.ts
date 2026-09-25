@@ -6,7 +6,16 @@ import { emit, toSafeError } from "./log";
 import { withRetry } from "./retry";
 import { withTimeout } from "./timeout";
 import { standInUrl } from "./stand-ins";
-import { BRIEFING_BUCKETS, MODEL, TRIAGE_RESPONSE_SCHEMA, TRIAGE_SYSTEM_INSTRUCTION, triagePrompt } from "./ai-prompts";
+import {
+  BRIEFING_BUCKETS,
+  BRIEFING_BUCKETS_NO_DEADLINES,
+  MODEL,
+  TRIAGE_RESPONSE_SCHEMA,
+  TRIAGE_RESPONSE_SCHEMA_NO_DEADLINES,
+  TRIAGE_SYSTEM_INSTRUCTION,
+  TRIAGE_SYSTEM_INSTRUCTION_NO_DEADLINES,
+  triagePrompt,
+} from "./ai-prompts";
 
 export { MODEL, BRIEFING_BUCKETS };
 
@@ -41,6 +50,18 @@ function gemini(): GoogleGenAI {
 // app falls back to the rule-based summary and spam flags in lib/rules.ts.
 export function aiEnabled(): boolean {
   return Boolean(process.env.GEMINI_API_KEY?.trim()) && Boolean(process.env.GEMINI_PAID_TIER_PROJECT?.trim());
+}
+
+// AI deadline detection (the "Has a deadline" bucket, dates and "Due today")
+// is off unless the deployment sets AI_DEADLINE_DETECTION=1. An AI-guessed
+// date is easy to over-rely on (for example as a court or filing deadline),
+// and detecting dates needs more data sent to Gemini: each email's Date
+// header and the user's local date, time and time zone. With it off, none of
+// those are sent, the model is given no deadline bucket, and no item carries
+// a date. Leave it off for any deployment serving law firms or other
+// regulated mailboxes (docs/deployment.md).
+export function deadlineDetectionEnabled(): boolean {
+  return process.env.AI_DEADLINE_DETECTION?.trim() === "1";
 }
 
 class AiDisabledError extends Error {
@@ -153,12 +174,13 @@ export function sanitizeForPrompt(value: string, maxLength: number): string {
     .slice(0, maxLength);
 }
 
-// The Date header is included so the triage can judge what is time-sensitive.
-function emailBlock(handle: string, e: ParsedEmail): string {
+// The Date header is included only with deadline detection on, so the
+// triage can work out dates; otherwise it isn't sent.
+function emailBlock(handle: string, e: ParsedEmail, deadlines: boolean): string {
   return [
     `<email id="${handle}">`,
     `From: ${sanitizeForPrompt(e.from, FIELD_LIMITS.from)}`,
-    ...(e.date ? [`Received: ${sanitizeForPrompt(e.date, FIELD_LIMITS.date)}`] : []),
+    ...(deadlines && e.date ? [`Received: ${sanitizeForPrompt(e.date, FIELD_LIMITS.date)}`] : []),
     `Subject: ${sanitizeForPrompt(e.subject, FIELD_LIMITS.subject)}`,
     `Preview: ${sanitizeForPrompt(e.snippet, FIELD_LIMITS.snippet)}`,
     `</email>`,
@@ -233,6 +255,17 @@ const ModelTriageItemSchema = z
   })
   .strict();
 
+// Without deadline detection: no "deadline" bucket and no dates.
+const ModelTriageItemSchemaNoDeadlines = z
+  .object({
+    id: z.string(),
+    bucket: z.enum(BRIEFING_BUCKETS_NO_DEADLINES),
+    action: z.string(),
+    spam: z.boolean(),
+    spamReason: z.enum(SPAM_REASONS),
+  })
+  .strict();
+
 // A real calendar date as YYYY-MM-DD, or "" (the model's answer when the
 // email names no date, and what anything else is reduced to).
 const IsoDateSchema = z.iso.date();
@@ -263,15 +296,23 @@ function normalizeVerdict(isSpam: boolean, reason: SpamReason): { isSpam: boolea
 // an email that cleared the heuristic pre-filter by itself (spamCandidates):
 // text planted in one email can't get an ordinary message flagged, and the
 // verdict only ever drives a card the user still has to act on.
-export function parseTriage(raw: unknown, handles: Map<string, ParsedEmail>): Triage | null {
+//
+// Without deadline detection (`deadlines` false) the answer must have the
+// no-deadline shape, and no item carries a date whatever the model says.
+export function parseTriage(
+  raw: unknown,
+  handles: Map<string, ParsedEmail>,
+  { deadlines = deadlineDetectionEnabled() }: { deadlines?: boolean } = {}
+): Triage | null {
   if (typeof raw !== "object" || raw === null || !Array.isArray((raw as { items?: unknown }).items)) return null;
   const byId = new Map<string, { item: BriefingItem; verdict: SpamVerdict }>();
   for (const entry of (raw as { items: unknown[] }).items) {
-    const parsed = ModelTriageItemSchema.safeParse(entry);
+    const parsed = deadlines ? ModelTriageItemSchema.safeParse(entry) : ModelTriageItemSchemaNoDeadlines.safeParse(entry);
     if (!parsed.success) continue;
     const email = handles.get(parsed.data.id);
     if (!email || byId.has(email.id)) continue;
-    const { bucket, action, due, dueDate, spam, spamReason } = parsed.data;
+    const { bucket, action, spam, spamReason } = parsed.data;
+    const { due = "", dueDate = "" } = "due" in parsed.data ? parsed.data : {};
     const verdict = heuristicSpamScore(email) >= 1 ? normalizeVerdict(spam, spamReason) : NOT_SPAM;
     byId.set(email.id, {
       item: {
@@ -294,31 +335,33 @@ export function parseTriage(raw: unknown, handles: Map<string, ParsedEmail>): Tr
 }
 
 // One triage call: each email still in the inbox is sorted into reply /
-// deadline / fyi / noise with a one-line action and any date it names, and
-// gets a spam verdict, all in one JSON call. lib/triage.ts passes one chunk
+// deadline / fyi / noise with a one-line action and any date it names (or,
+// without deadline detection, reply / fyi / noise with no dates), and gets a
+// spam verdict, all in one JSON call. lib/triage.ts passes one chunk
 // (triageChunks) per call; the output limit and timeout scale with the
 // number of emails. `now` is the user's local date and time
-// (lib/local-day.ts describeNow). Returns null when there is nothing to
+// (lib/local-day.ts describeNow), sent only with deadline detection on. Returns null when there is nothing to
 // sort or the model produced nothing usable; the caller then falls back to
 // the rule-based views for these emails. A reply cut off at the output
 // limit isn't valid JSON, so it is discarded like any other malformed answer.
 export async function triageToday(
   emails: ParsedEmail[],
-  { language = "en", now }: { language?: SummaryLanguage; now: string }
+  { language = "en", now }: { language?: SummaryLanguage; now?: string }
 ): Promise<Triage | null> {
   const inbox = emails.filter((e) => e.isInInbox);
   if (inbox.length === 0) return null;
 
+  const deadlines = deadlineDetectionEnabled();
   const handles = new Map(inbox.map((e, i) => [`e${i + 1}`, e]));
-  const digest = [...handles].map(([handle, e]) => emailBlock(handle, e)).join("\n\n");
+  const digest = [...handles].map(([handle, e]) => emailBlock(handle, e, deadlines)).join("\n\n");
 
   const { text } = asReply(
     await generate(
-      triagePrompt(SUMMARY_LANGUAGES[language], now, digest),
+      triagePrompt(SUMMARY_LANGUAGES[language], deadlines ? (now ?? "an unspecified day") : null, digest),
       {
-        systemInstruction: TRIAGE_SYSTEM_INSTRUCTION,
+        systemInstruction: deadlines ? TRIAGE_SYSTEM_INSTRUCTION : TRIAGE_SYSTEM_INSTRUCTION_NO_DEADLINES,
         responseMimeType: "application/json",
-        responseJsonSchema: TRIAGE_RESPONSE_SCHEMA,
+        responseJsonSchema: deadlines ? TRIAGE_RESPONSE_SCHEMA : TRIAGE_RESPONSE_SCHEMA_NO_DEADLINES,
         maxOutputTokens: triageMaxOutputTokens(inbox.length),
       },
       "triage",
@@ -333,7 +376,7 @@ export async function triageToday(
     logAiUsage({ feature: "triage", outcome: "discarded" });
     return null;
   }
-  const triage = parseTriage(raw, handles);
+  const triage = parseTriage(raw, handles, { deadlines });
   if (!triage) logAiUsage({ feature: "triage", outcome: "discarded" });
   return triage;
 }
@@ -374,7 +417,7 @@ export function spamCandidates(emails: ParsedEmail[]): ParsedEmail[] {
 // The spam verdicts one triage call gives the heuristic candidates among
 // `emails` (the evals use this; pass at most TRIAGE_CHUNK_SIZE emails, as
 // production does); throws if the model call fails.
-export async function classifySpam(emails: ParsedEmail[], now = "an unspecified day"): Promise<SpamVerdict[]> {
+export async function classifySpam(emails: ParsedEmail[], now?: string): Promise<SpamVerdict[]> {
   const candidates = new Set(spamCandidates(emails).map((e) => e.id));
   if (candidates.size === 0) return [];
   const triage = await triageToday(emails, { now });

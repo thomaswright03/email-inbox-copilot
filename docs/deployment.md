@@ -84,6 +84,7 @@ Every environment has its own value for every secret (see `SECURITY.md`, "Enviro
 | `DATABASE_URL` | `inbox_app` connection to the production database | a Neon branch | optional |
 | `GEMINI_API_KEY` | paid-tier key, or empty | paid-tier key, or empty | optional |
 | `GEMINI_PAID_TIER_PROJECT` | the paid project id, or empty (AI off) | same | empty unless the key is paid |
+| `AI_DEADLINE_DETECTION` | empty (off). `1` adds the AI "Has a deadline" group, dates and "Due today", and sends each email's Date header and the user's local date, time and zone to Gemini. Never for a law firm or other regulated mailbox (Terms and Privacy Policy section 1) | empty | optional |
 | `ALERT_WEBHOOK_URL` | Slack/Discord incoming webhook (https) | optional | empty |
 | `AUDIT_RETENTION_DAYS` | optional, default 90 | optional | optional |
 | `AI_CALLS_PER_USER_PER_DAY` / `AI_CALLS_GLOBAL_PER_DAY` | optional, defaults 500 / 5000 (see "AI budget" below) | optional | optional |

@@ -15,6 +15,9 @@ export default defineConfig({
     env: {
       GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? fromFiles.GEMINI_API_KEY ?? "",
       GEMINI_PAID_TIER_PROJECT: process.env.GEMINI_PAID_TIER_PROJECT ?? fromFiles.GEMINI_PAID_TIER_PROJECT ?? "",
+      // The bucket eval scores deadlines and "due today", so it runs the
+      // model with deadline detection on (off by default in a deployment).
+      AI_DEADLINE_DETECTION: "1",
     },
   },
   resolve: {
