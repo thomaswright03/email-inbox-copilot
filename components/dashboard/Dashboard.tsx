@@ -6,7 +6,8 @@ import { signOut, useSession } from "next-auth/react";
 import { ShieldCheck } from "lucide-react";
 import { fetchJson } from "@/lib/client-fetch";
 import { parseSender } from "@/lib/sender";
-import type { ActionName, ActionResult, SpamCardPayload } from "@/lib/payloads";
+import type { BriefingItem } from "@/lib/ai";
+import type { ActionName, ActionResult, SpamCardPayload, TodayPayload } from "@/lib/payloads";
 import { useI18n } from "../I18nProvider";
 import DashboardHeader from "./DashboardHeader";
 import DataFooter from "./DataFooter";
@@ -19,6 +20,8 @@ import { ErrorState, recoveryFor, SkeletonCards, SlowNotice } from "./States";
 import { errorMessageKey } from "./errors";
 import { formatResetTime } from "./format";
 import { useInbox } from "./useInbox";
+import { useLater } from "./useLater";
+import { laterTime, type LaterChoice, type LaterKind } from "./later";
 
 type ActionResponse = Extract<ActionResult, { ok: true }>;
 
@@ -70,6 +73,15 @@ export default function Dashboard({
   const [notices, setNotices] = useState<Record<string, CardNotice>>({});
   const [confirming, setConfirming] = useState<SpamCardPayload | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
+  // Briefing items marked Done (archived) since the summary last loaded;
+  // a new load starts from what the server says.
+  const [doneIds, setDoneIds] = useState<ReadonlySet<string>>(new Set());
+  const [donePending, setDonePending] = useState<string | null>(null);
+  const [seenToday, setSeenToday] = useState(inbox.today);
+  if (inbox.today !== seenToday) {
+    setSeenToday(inbox.today);
+    setDoneIds(new Set());
+  }
 
   function setTab(next: Tab) {
     if (next === tab) return;
@@ -87,6 +99,32 @@ export default function Dashboard({
     // was revoked): the session is no longer usable, so sign out cleanly.
     if (session?.error === "RefreshAccessTokenError") void signOut();
   }, [session?.error]);
+
+  // Snooze and Remind me (components/dashboard/later.ts). When one comes
+  // due, a browser notification is shown if the user allowed them; the
+  // dashboard highlights it either way. The notification is generic: it
+  // never names the sender or subject, because the operating system can show
+  // it on a lock screen and keep it in its notification history, outside
+  // Inbox Buddy (Privacy Policy section 3). The dashboard shows which email.
+  const notifyDue = useCallback(
+    (ids: string[]) => {
+      if (typeof Notification === "undefined" || Notification.permission !== "granted") return true;
+      for (const id of ids) {
+        try {
+          new Notification(t("later.notificationTitle"), {
+            body: t("later.notificationBody"),
+            tag: `inbox-buddy-${id}`,
+          });
+        } catch {
+          // Some browsers only allow notifications from a service worker;
+          // the in-page highlight still shows.
+        }
+      }
+      return true;
+    },
+    [t]
+  );
+  const later = useLater(accountId, notifyDue);
 
   const dismissToast = useCallback(() => setToast(null), []);
   const closeConfirm = useCallback(() => setConfirming(null), []);
@@ -184,6 +222,76 @@ export default function Dashboard({
     }
   }
 
+  function setDone(id: string, done: boolean) {
+    setDoneIds((prev) => {
+      const next = new Set(prev);
+      if (done) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  // Done archives the message; Undo moves it back to the inbox.
+  async function markDone(item: BriefingItem, email: TodayPayload["emails"][number]) {
+    setDonePending(item.id);
+    try {
+      const result = await postAction("done", item.id);
+      if (!result.ok && result.code === "message_gone") {
+        setDone(item.id, true);
+        showToast({ tone: "warning", message: t("errors.message_gone") });
+        void inbox.refresh();
+        return;
+      }
+      if (!result.ok) {
+        showToast({ tone: "warning", message: t(errorMessageKey(result.code, "errors.action")) });
+        return;
+      }
+      setDone(item.id, true);
+      later.remove(item.id);
+      showToast({
+        tone: "success",
+        message: t("toast.done", { subject: email.subject }),
+        onUndo: async () => {
+          setToast(null);
+          const undone = await postAction("undo_archive", item.id);
+          if (!undone.ok) {
+            showToast({ tone: "warning", message: t("toast.undoFailed") });
+            return;
+          }
+          setDone(item.id, false);
+          showToast({ tone: "success", message: t("toast.undone") });
+        },
+      });
+    } finally {
+      setDonePending(null);
+    }
+  }
+
+  // Snooze hides the item in this browser until the chosen time (Gmail's
+  // API has no snooze; the server only records that it was used). Remind me
+  // keeps it where it is and asks, once, to show a notification then.
+  function setLater(item: BriefingItem, email: TodayPayload["emails"][number], kind: LaterKind, choice: LaterChoice) {
+    const until = laterTime(choice);
+    later.set(item.id, { kind, until, threadId: email.threadId });
+    if (kind === "snooze") void postAction("snooze", item.id);
+    else if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      try {
+        void Notification.requestPermission().catch(() => {});
+      } catch {
+        // Older browsers take a callback instead; the in-page highlight is enough.
+      }
+    }
+    const time = new Intl.DateTimeFormat(locale, { weekday: "short", hour: "numeric", minute: "2-digit" }).format(until);
+    showToast({
+      tone: "success",
+      message: t(kind === "snooze" ? "toast.snoozed" : "toast.reminder", { subject: email.subject, time }),
+      onUndo: () => {
+        later.remove(item.id);
+        showToast({ tone: "success", message: t("toast.undone") });
+      },
+    });
+  }
+
   const spamCount = inbox.spam.status === "ready" ? cards.length : null;
   const resetTime = (iso: string | undefined) => (iso ? formatResetTime(iso, locale) : "");
 
@@ -202,6 +310,12 @@ export default function Dashboard({
               refreshing={inbox.refreshing}
               onRefresh={() => void inbox.refresh()}
               onRetry={inbox.retryToday}
+              doneIds={doneIds}
+              pendingId={donePending}
+              onDone={(item, email) => void markDone(item, email)}
+              later={later}
+              onLater={setLater}
+              onDismissDue={later.remove}
             />
           ) : inbox.spam.status === "error" ? (
             <ErrorState
@@ -225,27 +339,6 @@ export default function Dashboard({
                 <p className="mb-3 text-sm text-muted">
                   {t(`spam.ai.${inbox.spam.data.aiStatus}`, { time: resetTime(inbox.spam.data.aiResetsAt) })}
                 </p>
-              )}
-              {(inbox.spam.data.unchecked ?? 0) > 0 && (
-                <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-muted">
-                  <span>
-                    {inbox.spam.data.aiResetsAt
-                      ? t("spam.uncheckedBudget", {
-                          count: inbox.spam.data.unchecked ?? 0,
-                          time: resetTime(inbox.spam.data.aiResetsAt),
-                        })
-                      : t("spam.unchecked", { count: inbox.spam.data.unchecked ?? 0 })}
-                  </span>
-                  {!inbox.spam.data.aiResetsAt && (
-                    <button
-                      onClick={() => void inbox.checkMoreSpam()}
-                      disabled={inbox.checkingSpam}
-                      className="tap-h inline-flex items-center rounded-lg border border-border bg-surface px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {inbox.checkingSpam ? t("spam.checking") : t("spam.checkMore")}
-                    </button>
-                  )}
-                </div>
               )}
               {cards.length > 0 ? (
                 <div className="grid grid-cols-1 gap-3">

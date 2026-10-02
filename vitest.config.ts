@@ -11,7 +11,14 @@ export default defineConfig({
     // (npm run eval).
     exclude: ["node_modules/**", ".next/**", "e2e/**", "evals/**"],
     // GEMINI_PAID_TIER_PROJECT turns AI on; tests of the AI-off path unset it.
-    env: { GEMINI_API_KEY: "test-key", GEMINI_PAID_TIER_PROJECT: "test-paid-project", AUTH_SECRET: "test-auth-secret-for-vitest-only" },
+    // AI_DEADLINE_DETECTION (off by default in a deployment) is on here so
+    // the deadline tests run; tests of the default unset it.
+    env: {
+      GEMINI_API_KEY: "test-key",
+      GEMINI_PAID_TIER_PROJECT: "test-paid-project",
+      AI_DEADLINE_DETECTION: "1",
+      AUTH_SECRET: "test-auth-secret-for-vitest-only",
+    },
     coverage: {
       provider: "v8",
       include: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}", "auth.ts", "proxy.ts"],

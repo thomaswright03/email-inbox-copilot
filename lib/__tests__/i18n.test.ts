@@ -38,7 +38,7 @@ describe("createTranslator", () => {
     // French groups with a narrow no-break space.
     expect(createTranslator("fr", MESSAGES.fr)("summary.count", vars)).toMatch(/^1\u202f234 messages /);
     expect(createTranslator("en", MESSAGES.en)("summary.truncated", vars)).toBe(
-      "Showing the newest 100 of about 1,234 messages from the last 24 hours"
+      "Showing the newest 100 of about 1,234 messages from today"
     );
   });
 });

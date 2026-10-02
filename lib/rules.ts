@@ -1,5 +1,5 @@
 import type { ParsedEmail } from "./gmail";
-import { heuristicSpamScore, type SpamVerdict } from "./ai";
+import { heuristicSpamScore, type SpamVerdict, type Triage } from "./ai";
 import type { SpamReason } from "./spam-reasons";
 
 // Rule-based fallbacks used whenever Gemini is off, fails, or is over its
@@ -63,4 +63,17 @@ export function ruleBasedSpamVerdicts(emails: ParsedEmail[]): SpamVerdict[] {
   return emails
     .filter((e) => e.isInInbox && heuristicSpamScore(e) >= 2)
     .map((e) => ({ id: e.id, isSpam: true, reason: ruleBasedReason(e) }) satisfies SpamVerdict);
+}
+
+// The rule-based stand-in for one triage call, used for the emails of a
+// triage call that failed or didn't fit in the AI budget while the rest of
+// the inbox was triaged by the model (lib/triage.ts): likely bulk mail is
+// Noise and everything else FYI, with no action line or date, and the spam
+// flags are the rule-based ones.
+export function ruleBasedTriage(emails: ParsedEmail[]): Triage {
+  const flagged = new Map(ruleBasedSpamVerdicts(emails).map((v) => [v.id, v]));
+  return {
+    items: emails.map((e) => ({ id: e.id, bucket: heuristicSpamScore(e) >= 1 ? "noise" : "fyi", action: "", due: "", dueDate: "" })),
+    verdicts: emails.map((e) => flagged.get(e.id) ?? { id: e.id, isSpam: false, reason: "legitimate" }),
+  };
 }

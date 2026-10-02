@@ -20,13 +20,17 @@
 //
 // Tables covered: audit_log, consent_records, user_sessions,
 // ignored_messages (Not spam choices), response_cache (keys
-// "messages:<id>:...", "today:<id>:...", "spam:<id>:..." and
-// "verdicts:<id>:..."; values are encrypted and expire within 5 minutes,
-// or 26 hours for spam verdicts, so only keys and expiry are exported) and rate_limit (buckets "<rule>:<id>"). Nothing else in the database, and
+// "<kind>:<id>:..." for every kind in lib/user-key-kinds.mjs USER_KEY_KINDS,
+// the same list the app writes and purges at sign-out: today's messages,
+// summary, spam list and triage (briefing), and the spam verdicts; values are
+// encrypted and expire within 5 minutes, or 26 hours for spam verdicts, so
+// only keys and expiry are exported) and rate_limit (buckets "<rule>:<id>").
+// Nothing else in the database, and
 // nothing outside it except the host's log drain, holds per-user data;
 // log lines expire under the host's own log retention.
 import { createHmac, hkdfSync, timingSafeEqual } from "node:crypto";
 import { neon } from "@neondatabase/serverless";
+import { userCacheKeyPatterns } from "../lib/user-key-kinds.mjs";
 
 const [command, arg] = process.argv.slice(2);
 
@@ -65,7 +69,8 @@ const sql = neon(url);
 
 // LIKE patterns: escape the wildcard characters an id may contain.
 const likeId = googleId.replace(/[\\%_]/g, (c) => `\\${c}`);
-const cachePatterns = [`messages:${likeId}:%`, `today:${likeId}:%`, `spam:${likeId}:%`, `verdicts:${likeId}:%`];
+// One pattern per per-user cache kind (lib/user-key-kinds.mjs).
+const cachePatterns = userCacheKeyPatterns(googleId);
 const ratePattern = `%:${likeId}`;
 
 if (command === "export") {
@@ -74,7 +79,7 @@ if (command === "export") {
     sql.query("SELECT legal_version, accepted_at FROM consent_records WHERE google_id = $1 ORDER BY accepted_at", [googleId]),
     sql.query("SELECT version, updated_at FROM user_sessions WHERE google_id = $1", [googleId]),
     sql.query("SELECT message_id, created_at FROM ignored_messages WHERE google_id = $1 ORDER BY created_at", [googleId]),
-    sql.query("SELECT key, expires_at FROM response_cache WHERE key LIKE $1 OR key LIKE $2 OR key LIKE $3 OR key LIKE $4", cachePatterns),
+    sql.query("SELECT key, expires_at FROM response_cache WHERE key LIKE ANY($1::text[]) ORDER BY key", [cachePatterns]),
     sql.query("SELECT bucket, window_start, count FROM rate_limit WHERE bucket LIKE $1", [ratePattern]),
   ]);
   const report = {
@@ -84,7 +89,7 @@ if (command === "export") {
     consentRecords: consent,
     sessionVersion: sessions,
     notSpamChoices: notSpam,
-    cachedInboxData: cache.map((row) => ({ ...row, note: "encrypted inbox metadata or summary, deleted at expiry" })),
+    cachedInboxData: cache.map((row) => ({ ...row, note: "encrypted inbox metadata, briefing (AI notes and dates) or spam verdicts, deleted at expiry" })),
     rateLimitCounters: rate,
   };
   console.log(JSON.stringify(report, null, 2));
@@ -95,7 +100,7 @@ if (command === "export") {
     sql.query("DELETE FROM consent_records WHERE google_id = $1", [googleId]),
     sql.query("DELETE FROM user_sessions WHERE google_id = $1", [googleId]),
     sql.query("DELETE FROM ignored_messages WHERE google_id = $1", [googleId]),
-    sql.query("DELETE FROM response_cache WHERE key LIKE $1 OR key LIKE $2 OR key LIKE $3 OR key LIKE $4", cachePatterns),
+    sql.query("DELETE FROM response_cache WHERE key LIKE ANY($1::text[])", [cachePatterns]),
     sql.query("DELETE FROM rate_limit WHERE bucket LIKE $1", [ratePattern]),
   ], { fullResults: true });
   const [audit, consent, sessions, notSpam, cache, rate] = results.map((r) => r.rowCount ?? 0);

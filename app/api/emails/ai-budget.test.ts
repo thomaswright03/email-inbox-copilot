@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // The daily AI budget running out, with a tiny per-user budget so it can be
 // reached in a few requests. Gmail, Gemini and the session are faked; the
@@ -13,13 +13,13 @@ vi.mock("@/lib/gmail", async (importOriginal) => {
 });
 vi.mock("@/lib/ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/ai")>();
-  return { ...actual, summarizeToday: vi.fn(), classifyCandidates: vi.fn() };
+  return { ...actual, triageToday: vi.fn() };
 });
 vi.mock("@/lib/audit", () => ({ logAuditEvent: vi.fn() }));
 
 import { getGoogleSession } from "@/lib/session";
 import { fetchRecentMessages, type ParsedEmail } from "@/lib/gmail";
-import { classifyCandidates, summarizeToday } from "@/lib/ai";
+import { triageToday } from "@/lib/ai";
 import { GET as getToday } from "./today/route";
 import { GET as getSpam } from "./spam/route";
 
@@ -48,78 +48,81 @@ function nextUtcMidnight(): string {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)).toISOString();
 }
 
+// A load that needs the model: new mail has arrived since the last one.
+let mail = 0;
+// The clock moves on a minute first, so Refresh re-reads Gmail.
+function newMail(): ParsedEmail[] {
+  vi.setSystemTime(Date.now() + 60_000);
+  const email = promo(`n${++mail}`);
+  vi.mocked(fetchRecentMessages).mockResolvedValue({ emails: [email], truncated: false, totalEstimate: 1 });
+  return [email];
+}
+
 describe("when today's AI budget runs out", () => {
+  afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
     signIn();
-    vi.mocked(summarizeToday).mockResolvedValue({ text: "**Summary**", incomplete: false });
-    vi.mocked(classifyCandidates).mockImplementation(async (candidates) => ({
-      verdicts: candidates.map((e) => ({ id: e.id, isSpam: true, reason: "marketing" as const })),
-      checkedIds: candidates.map((e) => e.id),
-      attempted: candidates.length,
-      error: null,
+    vi.mocked(triageToday).mockImplementation(async (emails) => ({
+      items: emails.map((e) => ({ id: e.id, bucket: "noise" as const, action: "", due: "", dueDate: "" })),
+      verdicts: emails.map((e) => ({ id: e.id, isSpam: true, reason: "marketing" as const })),
     }));
   });
 
   it("the summary says so, with the reset time, instead of claiming AI is unavailable", async () => {
-    vi.mocked(fetchRecentMessages).mockResolvedValue({ emails: [promo("m1")], truncated: false, totalEstimate: 1 });
     for (let i = 0; i < 3; i++) {
+      newMail();
       const ok = await (await getToday(new Request("http://localhost/api/emails/today?refresh=1"))).json();
       expect(ok.aiStatus).toBe("generated");
     }
+    newMail();
     const res = await getToday(new Request("http://localhost/api/emails/today?refresh=1"));
     const body = await res.json();
     expect(res.status).toBe(200);
-    expect(body).toMatchObject({ aiStatus: "budget", aiResetsAt: nextUtcMidnight(), summary: null });
+    expect(body).toMatchObject({ aiStatus: "budget", aiResetsAt: nextUtcMidnight(), briefing: null });
     expect(body.groups).not.toBeNull();
-    expect(summarizeToday).toHaveBeenCalledTimes(3);
+    expect(triageToday).toHaveBeenCalledTimes(3);
   });
 
-  it("spam: checks what the budget allows, and says the rest wait until the reset", async () => {
-    vi.mocked(fetchRecentMessages).mockResolvedValue({
-      emails: ["a", "b", "c", "d", "e"].map(promo),
-      truncated: false,
-      totalEstimate: 5,
-    });
-    const body = await (await getSpam(new Request("http://localhost/api/emails/spam"))).json();
-    expect(vi.mocked(classifyCandidates).mock.calls[0][0]).toHaveLength(3);
-    expect(body).toMatchObject({ aiStatus: "generated", unchecked: 2, aiResetsAt: nextUtcMidnight() });
-    expect(body.flashcards).toHaveLength(3);
-
-    // Over budget now: the three checked verdicts are reused for free.
-    const again = await (await getSpam(new Request("http://localhost/api/emails/spam?refresh=1"))).json();
-    expect(classifyCandidates).toHaveBeenCalledTimes(1);
-    expect(again).toMatchObject({ aiStatus: "generated", unchecked: 2 });
+  it("one load charges one call for the summary and the spam list together", async () => {
+    for (let i = 0; i < 3; i++) {
+      newMail();
+      const [today, spam] = await Promise.all([
+        getToday(new Request("http://localhost/api/emails/today?refresh=1")),
+        getSpam(new Request("http://localhost/api/emails/spam?refresh=1")),
+      ]);
+      expect((await today.json()).aiStatus).toBe("generated");
+      expect((await spam.json()).aiStatus).toBe("generated");
+    }
+    expect(triageToday).toHaveBeenCalledTimes(3);
   });
 
   it("spam: with nothing checked by AI yet, shows the rule-based flags and the reset time", async () => {
-    vi.mocked(fetchRecentMessages).mockResolvedValue({ emails: [promo("m1")], truncated: false, totalEstimate: 1 });
-    for (let i = 0; i < 3; i++) await getToday(new Request("http://localhost/api/emails/today?refresh=1"));
-    const body = await (await getSpam(new Request("http://localhost/api/emails/spam"))).json();
-    expect(classifyCandidates).not.toHaveBeenCalled();
+    for (let i = 0; i < 3; i++) {
+      newMail();
+      await getToday(new Request("http://localhost/api/emails/today?refresh=1"));
+    }
+    newMail();
+    const body = await (await getSpam(new Request("http://localhost/api/emails/spam?refresh=1"))).json();
+    expect(triageToday).toHaveBeenCalledTimes(3);
     expect(body).toMatchObject({ aiStatus: "budget", aiResetsAt: nextUtcMidnight() });
-    expect(body.unchecked).toBeUndefined();
+    expect(body.flashcards).toHaveLength(1);
   });
 
-  it("only calls actually made are charged", async () => {
-    vi.mocked(fetchRecentMessages).mockResolvedValue({ emails: ["a", "b", "c"].map(promo), truncated: false, totalEstimate: 3 });
-    // The model only got to one of the three before its time ran out.
-    vi.mocked(classifyCandidates).mockImplementationOnce(async (candidates) => ({
-      verdicts: [{ id: candidates[0].id, isSpam: true, reason: "marketing" as const }],
-      checkedIds: [candidates[0].id],
-      attempted: 1,
-      error: null,
-    }));
-    const first = await (await getSpam(new Request("http://localhost/api/emails/spam"))).json();
-    expect(first).toMatchObject({ aiStatus: "generated", unchecked: 2 });
-    expect(first.aiResetsAt).toBeUndefined();
-
-    // Two calls were given back, so the next load can check the other two.
-    const second = await (await getSpam(new Request("http://localhost/api/emails/spam?refresh=1"))).json();
-    expect(vi.mocked(classifyCandidates).mock.calls[1][0]).toHaveLength(2);
-    expect(second.unchecked).toBeUndefined();
-    expect(second.flashcards).toHaveLength(3);
+  it("verdicts already known are still shown once the budget is used up", async () => {
+    const [email] = newMail();
+    await getSpam(new Request("http://localhost/api/emails/spam"));
+    for (let i = 0; i < 2; i++) {
+      newMail();
+      await getToday(new Request("http://localhost/api/emails/today?refresh=1"));
+    }
+    vi.setSystemTime(Date.now() + 60_000);
+    vi.mocked(fetchRecentMessages).mockResolvedValue({ emails: [email], truncated: false, totalEstimate: 1 });
+    const body = await (await getSpam(new Request("http://localhost/api/emails/spam?refresh=1"))).json();
+    expect(body).toMatchObject({ aiStatus: "generated" });
+    expect(body.flashcards.map((c: { id: string }) => c.id)).toEqual([email.id]);
   });
 });

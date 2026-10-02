@@ -24,7 +24,7 @@ vi.mock("@/lib/session", () => ({ getGoogleSession: vi.fn() }));
 
 import { getGoogleSession } from "@/lib/session";
 import { GMAIL_READ_DEADLINE_MS } from "@/lib/gmail";
-import { GEMINI_TIMEOUT_MS } from "@/lib/ai";
+import { GEMINI_TIMEOUT_MS, TRIAGE_CHUNK_SIZE, triageTimeoutMs } from "@/lib/ai";
 import { FETCH_TIMEOUT_MS } from "@/lib/client-fetch";
 import { GET as getToday } from "./today/route";
 
@@ -89,13 +89,33 @@ describe("when an upstream never answers", () => {
     generateContent.mockImplementation(never);
     let settled = false;
     const pending = getToday(new Request("http://localhost/api/emails/today")).finally(() => (settled = true));
-    await vi.advanceTimersByTimeAsync(GEMINI_TIMEOUT_MS.summary);
+    await vi.advanceTimersByTimeAsync(GEMINI_TIMEOUT_MS);
     expect(settled).toBe(true);
     const body = await (await pending).json();
-    expect(body).toMatchObject({ aiStatus: "unavailable", summary: null, groups: { toCheck: ["m1"], bulk: [] } });
+    expect(body).toMatchObject({ aiStatus: "unavailable", briefing: null, groups: { toCheck: ["m1"], bulk: [] } });
+  });
+
+  it("a hung Gemini on a full inbox (4 triage calls at once) falls back within the same timeout", async () => {
+    const ids = Array.from({ length: 100 }, (_, i) => `m${i}`);
+    api.list.mockResolvedValue({ data: { messages: ids.map((id) => ({ id })), resultSizeEstimate: 100 } });
+    api.get.mockImplementation(async ({ id }: { id: string }) => message(id));
+    generateContent.mockImplementation(never);
+    let settled = false;
+    const pending = getToday(new Request("http://localhost/api/emails/today")).finally(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(GEMINI_TIMEOUT_MS);
+    expect(settled).toBe(true);
+    expect(generateContent).toHaveBeenCalledTimes(4);
+    expect(await (await pending).json()).toMatchObject({ aiStatus: "unavailable", briefing: null });
+  });
+
+  it("each triage call's timeout grows with its emails, up to GEMINI_TIMEOUT_MS for a full chunk", () => {
+    expect(triageTimeoutMs(1)).toBeGreaterThanOrEqual(10_000);
+    expect(triageTimeoutMs(10)).toBeLessThan(triageTimeoutMs(TRIAGE_CHUNK_SIZE));
+    expect(triageTimeoutMs(TRIAGE_CHUNK_SIZE)).toBe(GEMINI_TIMEOUT_MS);
+    expect(triageTimeoutMs(100)).toBe(GEMINI_TIMEOUT_MS);
   });
 
   it("the server gives up before the dashboard does", () => {
-    expect(GMAIL_READ_DEADLINE_MS + GEMINI_TIMEOUT_MS.summary).toBeLessThan(FETCH_TIMEOUT_MS);
+    expect(GMAIL_READ_DEADLINE_MS + GEMINI_TIMEOUT_MS).toBeLessThan(FETCH_TIMEOUT_MS);
   });
 });
