@@ -169,6 +169,7 @@ describe("GET /api/emails/today", () => {
   });
 
   it("sends nothing to Gemini and returns rule-based groups when the paid tier isn't attested", async () => {
+    vi.stubEnv("GEMINI_REQUIRE_PAID_TIER", "true");
     vi.stubEnv("GEMINI_PAID_TIER_PROJECT", "");
     vi.mocked(getGoogleSession).mockResolvedValue(sessionFor("int-test-5@example.com"));
     vi.mocked(fetchRecentMessages).mockResolvedValue(inbox([EMAIL]));

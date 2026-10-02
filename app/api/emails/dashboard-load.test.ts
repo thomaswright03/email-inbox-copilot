@@ -42,6 +42,7 @@ function message(id: string, subject: string, extraHeaders: { name: string; valu
 describe("one dashboard load", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.stubEnv("GEMINI_REQUIRE_PAID_TIER", "true");
     vi.stubEnv("GEMINI_PAID_TIER_PROJECT", "");
     signIn();
     api.list.mockResolvedValue({ data: { messages: [{ id: "m1" }, { id: "m2" }], resultSizeEstimate: 2 } });

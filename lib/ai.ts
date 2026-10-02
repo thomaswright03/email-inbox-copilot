@@ -25,13 +25,23 @@ function gemini(): GoogleGenAI {
 // to the billing-enabled Google Cloud project that owns GEMINI_API_KEY (see
 // docs/compliance-records.md). Without it, nothing is sent to Gemini and the
 // app falls back to the rule-based summary and spam flags in lib/rules.ts.
+//
+// That check is currently OFF: the owner turned AI on for his own testing
+// with a free-tier key (2026-09-24), while no one else uses the app. Set
+// GEMINI_REQUIRE_PAID_TIER=true to enforce it again, and do so before anyone
+// else signs in.
+export function paidTierRequired(): boolean {
+  return process.env.GEMINI_REQUIRE_PAID_TIER?.trim().toLowerCase() === "true";
+}
+
 export function aiEnabled(): boolean {
-  return Boolean(process.env.GEMINI_API_KEY?.trim()) && Boolean(process.env.GEMINI_PAID_TIER_PROJECT?.trim());
+  if (!process.env.GEMINI_API_KEY?.trim()) return false;
+  return !paidTierRequired() || Boolean(process.env.GEMINI_PAID_TIER_PROJECT?.trim());
 }
 
 class AiDisabledError extends Error {
   constructor() {
-    super("Gemini is disabled: GEMINI_PAID_TIER_PROJECT is not set");
+    super("Gemini is disabled: GEMINI_API_KEY is not set, or GEMINI_REQUIRE_PAID_TIER is on without GEMINI_PAID_TIER_PROJECT");
   }
 }
 
