@@ -6,7 +6,7 @@ type Config = {
   pages: Record<string, string>;
   session: { maxAge: number };
   callbacks: {
-    signIn: (args: unknown) => Promise<boolean>;
+    signIn: (args: unknown) => Promise<boolean | string>;
     jwt: (args: unknown) => Promise<Record<string, unknown>>;
     session: (args: unknown) => Promise<Record<string, unknown>>;
   };
@@ -54,7 +54,19 @@ describe("auth.ts", () => {
   describe("signIn", () => {
     it("accepts a verified, allowlisted Google account", async () => {
       vi.stubEnv("ALLOWED_EMAILS", "a@example.com");
+      vi.mocked(currentSessionVersion).mockResolvedValue(3);
       expect(await config().callbacks.signIn({ account, profile: { email: "a@example.com", email_verified: true } })).toBe(true);
+      expect(currentSessionVersion).toHaveBeenCalledWith("gid-1");
+      vi.unstubAllEnvs();
+    });
+
+    it("stops with a visible error when the session store is broken, instead of looping back to sign-in", async () => {
+      vi.stubEnv("ALLOWED_EMAILS", "a@example.com");
+      vi.mocked(currentSessionVersion).mockRejectedValue(new Error('relation "user_sessions" does not exist'));
+      expect(await config().callbacks.signIn({ account, profile: { email: "a@example.com", email_verified: true } })).toBe(
+        "/auth/error?error=Configuration"
+      );
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining("auth.session-store"));
       vi.unstubAllEnvs();
     });
 

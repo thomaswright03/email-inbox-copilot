@@ -5,7 +5,7 @@ import { currentSessionVersion, revokeUserSessions } from "@/lib/session-store";
 import { logAuditEvent } from "@/lib/audit";
 import { SESSION_COOKIE_NAME, USE_SECURE_COOKIES } from "@/lib/session-cookie";
 import { LEGAL_VERSION } from "@/content/legal";
-import { logError, logSecurityEvent } from "@/lib/log";
+import { logError, logSecurityEvent, raiseAlert } from "@/lib/log";
 import { purgeUserCaches } from "@/lib/response-cache";
 import { recordConsent } from "@/lib/consent";
 
@@ -84,6 +84,17 @@ export const { handlers } = NextAuth({
         logSecurityEvent("signin_rejected", { user: userId, reason: "not_allowlisted" });
         await logAuditEvent({ userId, action: "sign_in_rejected", detail: "not on allowlist" });
         return false;
+      }
+      // The session is tied to a server-side version (lib/session-store.ts).
+      // If that store is configured but broken (tables missing, wrong
+      // DATABASE_URL), every page would refuse the new session and quietly
+      // show the sign-in page again. Stop here with a visible error instead.
+      try {
+        await currentSessionVersion(userId);
+      } catch (err) {
+        logError("auth.session-store", err);
+        await raiseAlert("session_store_unavailable", "Sign-in stopped: the session store (DATABASE_URL, user_sessions) isn't working");
+        return "/auth/error?error=Configuration";
       }
       logSecurityEvent("signin", { user: userId });
       return true;

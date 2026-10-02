@@ -14,6 +14,8 @@ export const fr: Messages = {
   "signin.tagline":
     "Connectez Gmail pour recevoir chaque jour un résumé de vos e-mails récents, et un onglet spam qui aide à repérer les messages promotionnels que votre dossier de courrier indésirable a pu laisser passer.",
   "signin.continue": "Continuer avec Google",
+  "signin.storeUnavailable":
+    "Vous vous êtes connecté avec Google, mais Inbox Buddy n'a pas pu ouvrir votre session car il ne peut pas joindre sa base de données. Réessayez dans un instant. Si le problème persiste, contactez {email}.",
   "signin.agreePrefix": "En continuant, vous acceptez nos",
   "signin.and": "et notre",
   "legal.terms": "Conditions d'utilisation",

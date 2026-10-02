@@ -22,14 +22,24 @@ export type GoogleSession = {
 
 const EXPIRY_MARGIN_SECONDS = 60;
 
+// Why there is no session. "store_unavailable": the user holds a session
+// cookie but the session store couldn't be read, so the sign-in page says
+// so instead of silently asking them to sign in again.
+export type SessionRead = { session: GoogleSession; problem: null } | { session: null; problem: "store_unavailable" | null };
+
 export async function getGoogleSession(headers?: Headers): Promise<GoogleSession | null> {
+  return (await readGoogleSession(headers)).session;
+}
+
+export async function readGoogleSession(headers?: Headers): Promise<SessionRead> {
+  const none: SessionRead = { session: null, problem: null };
   const secret = process.env.AUTH_SECRET;
   if (!secret) {
     // A running server without the secret can't read any session: that is
     // reported loudly. `next build` renders pages without runtime secrets,
     // so there it is expected and not an error.
     if (process.env.NEXT_PHASE !== "phase-production-build") logError("session", new Error("AUTH_SECRET is not set"));
-    return null;
+    return none;
   }
 
   const token = await getToken({
@@ -39,18 +49,18 @@ export async function getGoogleSession(headers?: Headers): Promise<GoogleSession
     cookieName: SESSION_COOKIE_NAME,
     salt: SESSION_COOKIE_NAME,
   });
-  if (!token || token.error) return null;
+  if (!token || token.error) return none;
 
   const userId = typeof token.googleId === "string" ? token.googleId : null;
   const userEmail = typeof token.email === "string" ? token.email : null;
-  if (!userId || !userEmail) return null;
+  if (!userId || !userEmail) return none;
 
   // A cookie issued before the user's last sign-out or an operator
   // revocation carries an older version and is refused.
   const check = await checkSessionVersion(userId, token.sessionVersion);
   if (check !== "valid") {
     logSecurityEvent("session_rejected", { reason: check });
-    return null;
+    return { session: null, problem: check === "unavailable" ? "store_unavailable" : null };
   }
 
   let accessToken = typeof token.accessToken === "string" ? token.accessToken : null;
@@ -60,20 +70,21 @@ export async function getGoogleSession(headers?: Headers): Promise<GoogleSession
     // the browser polls /api/auth/session; this covers a request that lands
     // in between, without writing anything back.
     const refreshToken = typeof token.refreshToken === "string" ? token.refreshToken : null;
-    if (!refreshToken) return null;
+    if (!refreshToken) return none;
     try {
       accessToken = (await refreshGoogleAccessToken(refreshToken)).accessToken;
     } catch (err) {
       logError("session.refresh", err);
-      return null;
+      return none;
     }
   }
 
-  return {
+  const session: GoogleSession = {
     userId,
     userEmail,
     userName: typeof token.name === "string" ? token.name : null,
     accessToken,
     consented: token.legalVersionAccepted === LEGAL_VERSION,
   };
+  return { session, problem: null };
 }

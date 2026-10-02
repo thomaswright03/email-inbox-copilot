@@ -2,7 +2,8 @@
 
 import { signIn } from "next-auth/react";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { AlertTriangle, Sparkles } from "lucide-react";
+import { CONTACT_EMAIL } from "@/content/legal";
 import Preferences from "./Preferences";
 import { useI18n } from "./I18nProvider";
 
@@ -29,7 +30,7 @@ function GoogleIcon() {
   );
 }
 
-export default function SignIn() {
+export default function SignIn({ storeUnavailable = false }: { storeUnavailable?: boolean }) {
   const { t } = useI18n();
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 py-10">
@@ -43,6 +44,13 @@ export default function SignIn() {
 
         <h1 className="text-lg font-semibold tracking-tight">{t("app.name")}</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">{t("signin.tagline")}</p>
+
+        {storeUnavailable && (
+          <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-danger">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+            <span>{t("signin.storeUnavailable", { email: CONTACT_EMAIL })}</span>
+          </div>
+        )}
 
         <button
           onClick={() => void signIn("google")}

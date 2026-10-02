@@ -14,11 +14,11 @@ vi.mock("next/headers", () => ({
   headers: async () => ({ get: (name: string) => headerJar.get(name) ?? null }),
 }));
 vi.mock("next/server", async (importOriginal) => ({ ...(await importOriginal<object>()), connection: async () => {} }));
-vi.mock("@/lib/session", () => ({ getGoogleSession: vi.fn() }));
+vi.mock("@/lib/session", () => ({ getGoogleSession: vi.fn(), readGoogleSession: vi.fn() }));
 vi.mock("geist/font/sans", () => ({ GeistSans: { variable: "font-sans-var" } }));
 vi.mock("geist/font/mono", () => ({ GeistMono: { variable: "font-mono-var" } }));
 
-import { getGoogleSession } from "@/lib/session";
+import { getGoogleSession, readGoogleSession } from "@/lib/session";
 import AuthErrorPage, { generateMetadata as authErrorMetadata } from "@/app/auth/error/page";
 import NotFound from "@/app/not-found";
 import PrivacyPage from "@/app/privacy/page";
@@ -85,15 +85,20 @@ describe("server-rendered pages", () => {
   });
 
   it("the home page shows sign-in, the consent gate, or the dashboard", async () => {
-    vi.mocked(getGoogleSession).mockResolvedValue(null);
-    expect((await Home()).type).toBe(SignIn);
+    vi.mocked(readGoogleSession).mockResolvedValue({ session: null, problem: null });
+    const signin = await Home();
+    expect(signin.type).toBe(SignIn);
+    expect(signin.props.storeUnavailable).toBe(false);
+
+    vi.mocked(readGoogleSession).mockResolvedValue({ session: null, problem: "store_unavailable" });
+    expect((await Home()).props.storeUnavailable).toBe(true);
 
     const session = { userId: "g1", userEmail: "a@example.com", userName: null, accessToken: "t", consented: false };
-    vi.mocked(getGoogleSession).mockResolvedValue(session);
+    vi.mocked(readGoogleSession).mockResolvedValue({ session, problem: null });
     const consent = await Home();
     expect(consent.type).toBe(ConsentGate);
 
-    vi.mocked(getGoogleSession).mockResolvedValue({ ...session, consented: true });
+    vi.mocked(readGoogleSession).mockResolvedValue({ session: { ...session, consented: true }, problem: null });
     const dashboard = await Home();
     expect(dashboard.type).toBe(Dashboard);
     expect(dashboard.props.userName).toBe("a@example.com");
